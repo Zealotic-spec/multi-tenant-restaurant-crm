@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRM API Broker — Демо-стенд интеграции</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0b0b0f;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: #0f0f14;
+      border-bottom: 1px solid #1e1e2e;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #a5b4fc;
+    }
+    header .badge {
+      font-size: 10px;
+      background: #1e1b4b;
+      color: #818cf8;
+      border: 1px solid #3730a3;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    .split {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ===== PANELS ===== */
+    .panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-left  { border-right: 2px solid #1a1a2e; }
+
+    .panel-header {
+      padding: 14px 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .panel-left .panel-header  { background: #0f1117; color: #fbbf24; border-bottom: 1px solid #1e2030; }
+    .panel-right .panel-header { background: #0a0f1a; color: #34d399; border-bottom: 1px solid #0f2a1a; }
+
+    .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .dot-gold { background: #fbbf24; box-shadow: 0 0 6px #fbbf2466; animation: pulse 2s infinite; }
+    .dot-green { background: #34d399; box-shadow: 0 0 6px #34d39966; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      scrollbar-width: thin;
+      scrollbar-color: #2d2d44 transparent;
+    }
+
+    /* ===== RESTAURANT LEFT PANEL ===== */
+    .restaurant-hero {
+      background: linear-gradient(135deg, #1a1000 0%, #2a1a00 100%);
+      border: 1px solid #3d2a00;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .restaurant-hero .emoji { font-size: 36px; margin-bottom: 6px; }
+    .restaurant-hero h2 { font-size: 20px; font-weight: 800; color: #fbbf24; letter-spacing: 1px; }
+    .restaurant-hero p  { font-size: 11px; color: #92400e; margin-top: 4px; }
+
+    /* ===== SECTION TITLES ===== */
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 10px;
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-title::after { content:''; flex:1; height:1px; background:#1e2030; }
+
+    /* ===== MENU GRID ===== */
+    .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+    .menu-item {
+      background: #0f1117;
+      border: 1px solid #1e2030;
+      border-radius: 10px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all .18s;
+      position: relative;
+    }
+    .menu-item:hover { border-color: #fbbf24; background: #15100a; }
+    .menu-item.in-cart { border-color: #22c55e; background: #0a180f; }
+    .menu-item .dish-name { font-size: 12px; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; }
+    .menu-item .dish-price { font-size: 13px; font-weight: 800; color: #fbbf24; }
+    .menu-item .qty-badge {
+      position: absolute; top: 8px; right: 8px;
+      background: #22c55e; color: #000;
+      font-size: 10px; font-weight: 800;
+      width: 18px; height: 18px;
+      border-radius: 50%; display: flex;
+      align-items: center; justify-content: center;
+    }
+
+    /* ===== BASKET ===== */
+    .basket-box {
+      background: #0a0a12;
+      border: 1px solid #1e2030;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 14px;
+      min-height: 60px;
+    }
+    .basket-empty { color: #374151; font-size: 11px; text-align: center; padding: 10px 0; }
+    .basket-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; padding: 4px 0;
+      border-bottom: 1px solid #1a1a2e;
+    }
+    .basket-row:last-child { border-bottom: none; }
+    .basket-total {
+      font-size: 14px; font-weight: 800; color: #fbbf24;
+      text-align: right; margin-top: 8px;
+    }
+
+    /* ===== BOOKING FORM ===== */
+    .form-group { margin-bottom: 10px; }
+    .form-group label { font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px; text-transform: uppercase; display: block; margin-bottom: 5px; }
+    .form-group input, .form-group select {
+      width: 100%;
+      background: #0a0a12;
+      border: 1px solid #1e2030;
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: #e2e8f0;
+      font-size: 12px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #fbbf24; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+      width: 100%; padding: 11px; border: none; border-radius: 10px;
+      font-size: 12px; font-weight: 800; letter-spacing: 1px;
+      text-transform: uppercase; cursor: pointer;
+      transition: all .15s; display: flex; align-items: center;
+      justify-content: center; gap: 6px;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-gold    { background: #fbbf24; color: #000; }
+    .btn-gold:hover    { background: #f59e0b; }
+    .btn-emerald { background: #10b981; color: #000; }
+    .btn-emerald:hover { background: #059669; }
+    .btn-indigo  { background: #6366f1; color: #fff; }
+    .btn-indigo:hover  { background: #4f46e5; }
+    .btn-ghost   { background: #1e2030; color: #94a3b8; border: 1px solid #2d2d44; }
+    .btn-ghost:hover   { background: #2d2d44; color: #e2e8f0; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-sm { padding: 7px 12px; font-size: 11px; border-radius: 7px; width: auto; }
+
+    /* ===== CRM RIGHT PANEL ===== */
+    .crm-login-card {
+      max-width: 340px; margin: 20px auto;
+      background: #0a0f1a; border: 1px solid #0f2a3a;
+      border-radius: 14px; padding: 24px;
+    }
+    .crm-login-card h3 { font-size: 15px; font-weight: 800; color: #34d399; margin-bottom: 4px; text-align: center; }
+    .crm-login-card p  { font-size: 10px; color: #374151; text-align: center; margin-bottom: 18px; letter-spacing: 1px; text-transform: uppercase; }
+
+    .quick-users {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px;
+    }
+    .quick-user-btn {
+      background: #0f1a0f; border: 1px solid #134e2a;
+      color: #6ee7b7; font-size: 10px; font-weight: 700;
+      padding: 7px 8px; border-radius: 7px; cursor: pointer;
+      text-align: left; transition: all .15s;
+    }
+    .quick-user-btn:hover { background: #163824; border-color: #22c55e; }
+    .quick-user-btn .role { font-size: 9px; color: #374151; display: block; margin-top: 1px; }
+
+    /* ===== CRM DASHBOARD ===== */
+    .crm-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      background: #0a0f1a; border: 1px solid #0f2a3a;
+      border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
+      font-size: 11px;
+    }
+    .crm-user-info .name { font-weight: 700; color: #34d399; }
+    .crm-user-info .role-badge {
+      font-size: 9px; font-weight: 700; background: #134e2a;
+      color: #6ee7b7; border: 1px solid #166534;
+      padding: 1px 7px; border-radius: 4px; margin-left: 6px; text-transform: uppercase;
+    }
+
+    .crm-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+    .crm-tab {
+      padding: 7px 14px; border-radius: 8px; font-size: 11px;
+      font-weight: 700; cursor: pointer; border: none;
+      background: #0f1117; color: #64748b;
+      transition: all .15s; letter-spacing: .5px;
+    }
+    .crm-tab.active { background: #134e2a; color: #34d399; }
+
+    /* ===== TABLE ===== */
+    .crm-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    thead tr { border-bottom: 1px solid #1e2030; }
+    th { padding: 8px 10px; text-align: left; font-weight: 700; color: #475569; letter-spacing: .8px; text-transform: uppercase; font-size: 10px; }
+    td { padding: 9px 10px; border-bottom: 1px solid #0f1117; }
+    tr:hover td { background: #0a0a12; }
+
+    .status-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 5px;
+      font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .s-new      { background: #1c1a3a; color: #818cf8; }
+    .s-cooking  { background: #2a1600; color: #fb923c; }
+    .s-ready    { background: #134e2a; color: #6ee7b7; }
+    .s-delivered{ background: #1e2030; color: #64748b; }
+    .s-confirmed{ background: #134e2a; color: #6ee7b7; }
+    .s-pending  { background: #1c1a3a; color: #818cf8; }
+    .s-paid     { background: #0c2a1a; color: #4ade80; }
+    .s-failed   { background: #2a0a0a; color: #f87171; }
+
+    .action-btn {
+      padding: 4px 10px; border-radius: 5px; font-size: 10px;
+      font-weight: 700; cursor: pointer; border: none;
+      background: #1e2030; color: #94a3b8; transition: all .12s;
+    }
+    .action-btn:hover { background: #2d2d44; color: #e2e8f0; }
+
+    .empty-state {
+      text-align: center; color: #374151; font-size: 12px;
+      padding: 40px 0; font-style: italic;
+    }
+
+    /* ===== TOAST ===== */
+    #toast-container {
+      position: fixed; bottom: 20px; right: 20px;
+      display: flex; flex-direction: column; gap: 8px; z-index: 9999;
+    }
+    .toast {
+      padding: 12px 18px; border-radius: 10px; font-size: 12px;
+      font-weight: 600; max-width: 320px; animation: slideIn .2s ease;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    }
+    .toast-ok    { background: #134e2a; color: #6ee7b7; border: 1px solid #166534; }
+    .toast-err   { background: #3b0a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .toast-info  { background: #1e1b4b; color: #a5b4fc; border: 1px solid #3730a3; }
+    @keyframes slideIn { from{transform:translateX(30px);opacity:0} to{transform:translateX(0);opacity:1} }
+
+    /* ===== RESERVATION TIMER ===== */
+    .res-time-badge {
+      background: #2a1600; color: #fb923c;
+      font-size: 11px; font-weight: 700;
+      padding: 4px 10px; border-radius: 6px; display: inline-block;
+    }
+
+    select option { background: #0b0b0f; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:22px">🏆</span>
+  <h1>CRM API Broker — Демо-стенд интеграции</h1>
+  <span class="badge">LIVE DEMO // localhost:3000</span>
+  <span style="margin-left:auto;font-size:11px;color:#374151" id="clock"></span>
+</header>
+
+<div class="split">
+
+  <!-- =============================== LEFT: RESTAURANT SITE =============================== -->
+  <div class="panel panel-left">
+    <div class="panel-header">
+      <div class="dot dot-gold"></div>
+      🍽️ Сайт ресторана «<span id="tenant-name-label">…</span>»
+      <span style="margin-left:auto;font-size:10px;color:#64748b">Widget API / X-Restaurant-Key</span>
+    </div>
+
+    <div class="panel-body">
+      <!-- Подключение к тенанту: любой сайт ресторана получает свой X-Restaurant-Key
+           один раз при регистрации (см. super_admin → "Создать ресторан") и подставляет
+           его сюда вместо демо-ключа. Каталог /public/restaurants даёт id/name тенантов
+           без ключей — ключ передаётся владельцу напрямую, не через публичный API. -->
+      <div class="form-group">
+        <label>X-Restaurant-Key (ключ интеграции вашего сайта)</label>
+        <input id="restaurant-key" type="text" value="api_key_tenant_a_2026" />
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadTenant()" style="margin-bottom:14px">↻ Подключиться</button>
+
+      <!-- Hero -->
+      <div class="restaurant-hero">
+        <div class="emoji">🏪</div>
+        <h2 id="tenant-name-hero">—</h2>
+        <p>Бронирование столов и предзаказ к приходу · Tenant ID: <span id="tenant-id-hero">—</span></p>
+      </div>
+
+      <!-- MENU -->
+      <div class="section-title">🍲 Выберите блюда</div>
+      <div class="menu-grid" id="menu-grid">
+        <div class="empty-state" style="grid-column:1/-1">Подключитесь к ресторану выше, чтобы загрузить меню</div>
+      </div>
+
+      <!-- BASKET -->
+      <div class="section-title">🛒 Корзина</div>
+      <div class="basket-box" id="basket-box">
+        <div class="basket-empty">Добавьте блюда из меню выше</div>
+      </div>
+
+      <!-- ORDER TYPE -->
+      <div class="form-group">
+        <label>Формат заказа</label>
+        <select id="delivery-type">
+          <option value="in_restaurant">В заведении (за столом)</option>
+          <option value="takeaway">С собой</option>
+        </select>
+      </div>
+
+      <button class="btn btn-emerald" id="btn-order" onclick="createOrder()" style="margin-bottom:12px">
+        ✅ Оформить заказ и оплатить
+      </button>
+
+      <hr style="border-color:#1e2030;margin:16px 0">
+
+      <!-- BOOKING FORM -->
+      <div class="section-title">📅 Забронировать стол</div>
+      <div class="form-group">
+        <label>Ваше имя</label>
+        <input id="res-name" type="text" placeholder="Aibek Nurmagambetov" value="Aibek Nurmagambetov" />
+      </div>
+      <div class="form-group">
+        <label>Телефон</label>
+        <input id="res-phone" type="tel" placeholder="+7 705 330 2002" value="+7 705 330 2002" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Дата</label>
+          <input id="res-date" type="date" />
+        </div>
+        <div class="form-group">
+          <label>Время</label>
+          <input id="res-time" type="time" value="19:30" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Количество гостей</label>
+        <select id="res-guests">
+          <option value="1">1 гость</option>
+          <option value="2" selected>2 гостя</option>
+          <option value="3">3 гостя</option>
+          <option value="4">4 гостя</option>
+          <option value="6">6 гостей</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Стол (свободные на сегодня)</label>
+        <select id="res-table">
+          <option value="">Подключитесь к ресторану, чтобы увидеть столы</option>
+        </select>
+      </div>
+
+      <button class="btn btn-gold" onclick="createReservation()">
+        📌 Забронировать стол
+      </button>
+    </div>
+  </div>
+
+  <!-- =============================== RIGHT: CRM PANEL =============================== -->
+  <div class="panel panel-right">
+    <div class="panel-header">
+      <div class="dot dot-green"></div>
+      🖥️ CRM Панель — Хостес / Повар
+      <span style="margin-left:auto;font-size:10px;color:#374151">JWT Bearer Auth</span>
+    </div>
+
+    <div class="panel-body">
+      <!-- LOGIN -->
+      <div id="crm-login">
+        <div class="crm-login-card">
+          <h3>🔐 Вход в CRM</h3>
+          <p>POST /api/v1/auth/login · JWT</p>
+
+          <div class="section-title">Быстрый вход</div>
+          <div class="quick-users">
+            <button class="quick-user-btn" onclick="quickLogin('owner@tenant-a.io','password123')">
+              owner@tenant-a.io
+              <span class="role">tenant_owner</span>
+            </button>
+            <button class="quick-user-btn" onclick="quickLogin('hostess@tenant-a.io','password123')">
+              hostess@tenant-a.io
+              <span class="role">hostess</span>
+            </button>
+            <button class="quick-user-btn" onclick="quickLogin('chef@tenant-a.io','password123')">
+              chef@tenant-a.io
+              <span class="role">chef (кухня)</span>
+            </button>
+            <button class="quick-user-btn" onclick="quickLogin('superadmin@saas.io','password123')">
+              superadmin@saas.io
+              <span class="role">super_admin</span>
+            </button>
+          </div>
+
+          <div class="section-title">Или вручную</div>
+          <div class="form-group">
+            <label>Email</label>
+            <input id="login-email" type="email" value="owner@tenant-a.io" />
+          </div>
+          <div class="form-group">
+            <label>Пароль</label>
+            <input id="login-pass" type="password" value="password123" />
+          </div>
+          <div id="login-error" style="color:#f87171;font-size:11px;margin-bottom:8px;display:none"></div>
+          <button class="btn btn-indigo" onclick="crmLogin()">Войти в CRM →</button>
+        </div>
+      </div>
+
+      <!-- DASHBOARD (hidden until login) -->
+      <div id="crm-dashboard" style="display:none">
+
+        <div class="crm-topbar">
+          <div class="crm-user-info">
+            <span class="name" id="crm-email-display"></span>
+            <span class="role-badge" id="crm-role-display"></span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="refreshAll()">↻ Обновить</button>
+            <button class="btn btn-ghost btn-sm" onclick="crmLogout()" style="color:#f87171">Выйти</button>
+          </div>
+        </div>
+
+        <div class="crm-tabs">
+          <button class="crm-tab active" onclick="showTab('orders',this)">🍳 Заказы</button>
+          <button class="crm-tab" onclick="showTab('reservations',this)">📅 Брони</button>
+        </div>
+
+        <!-- ORDERS TAB -->
+        <div id="tab-orders">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <span style="font-size:11px;color:#64748b">Активные заказы ресторана</span>
+            <span id="orders-count" style="font-size:10px;background:#1e2030;padding:3px 10px;border-radius:5px;color:#818cf8"></span>
+          </div>
+          <div class="crm-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Состав</th>
+                  <th>Сумма</th>
+                  <th>Оплата</th>
+                  <th>Статус</th>
+                  <th>Действие</th>
+                </tr>
+              </thead>
+              <tbody id="orders-tbody">
+                <tr><td colspan="6" class="empty-state">Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- RESERVATIONS TAB -->
+        <div id="tab-reservations" style="display:none">
+          <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:11px;color:#64748b">Брони ресторана</span>
+            <span id="res-count" style="font-size:10px;background:#1e2030;padding:3px 10px;border-radius:5px;color:#818cf8"></span>
+          </div>
+          <div class="crm-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Гость</th>
+                  <th>Телефон</th>
+                  <th>Дата/Время</th>
+                  <th>Гостей</th>
+                  <th>Статус</th>
+                  <th>Действие</th>
+                </tr>
+              </thead>
+              <tbody id="reservations-tbody">
+                <tr><td colspan="6" class="empty-state">Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<script>
+  // ── CONFIG ──────────────────────────────────────────────────
+  // Этот стенд — универсальный witness-сайт: меню, название тенанта и столы
+  // приходят с брокера по X-Restaurant-Key, а не вшиты в страницу. Подставьте
+  // ключ ЛЮБОГО зарегистрированного ресторана в поле выше — стенд переключится
+  // на его данные без изменения кода.
+  const API = '/api/v1';
+
+  // ── STATE ────────────────────────────────────────────────────
+  let API_KEY = document.getElementById('restaurant-key').value.trim();
+  let MENU = [];         // загружается из /client/restaurant
+  let basket = {};       // { dishName: qty }
+  let crmToken = null;
+  let crmUser  = null;
+  let activeTab = 'orders';
+  let refreshTimer = null;
+
+  // ── CLOCK ────────────────────────────────────────────────────
+  setInterval(() => {
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString('ru-KZ');
+  }, 1000);
+
+  // Set today's date in booking form
+  document.getElementById('res-date').value = new Date().toISOString().split('T')[0];
+
+  // ── TOAST ────────────────────────────────────────────────────
+  function toast(msg, type = 'ok') {
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = msg;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 4500);
+  }
+
+  // ── TENANT CONNECT (любой сайт ресторана подключается своим X-Restaurant-Key) ──
+  async function loadTenant() {
+    API_KEY = document.getElementById('restaurant-key').value.trim();
+    if (!API_KEY) { toast('Укажите X-Restaurant-Key', 'err'); return; }
+
+    try {
+      const r = await fetch(`${API}/client/restaurant`, {
+        headers: { 'X-Restaurant-Key': API_KEY }
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Неверный ключ ресторана');
+
+      document.getElementById('tenant-name-label').textContent = d.name;
+      document.getElementById('tenant-name-hero').textContent  = d.name;
+      document.getElementById('tenant-id-hero').textContent    = d.id;
+
+      MENU = (d.menu || []).map(m => ({ name: m.name, price: m.price }));
+      basket = {};
+      renderMenu();
+      renderBasket();
+      toast(`🔌 Подключено к тенанту «${d.name}»`, 'ok');
+
+      await loadTables();
+    } catch (e) {
+      toast('Ошибка подключения: ' + e.message, 'err');
+    }
+  }
+
+  // ── TABLES (для выбора стола при бронировании; без PII чужих гостей) ─────
+  async function loadTables() {
+    const select = document.getElementById('res-table');
+    try {
+      const r = await fetch(`${API}/client/tables`, {
+        headers: { 'X-Restaurant-Key': API_KEY }
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Не удалось загрузить столы');
+
+      const free = (d.tables || []).filter(t => t.current_status === 'free');
+      if (free.length === 0) {
+        select.innerHTML = '<option value="">Свободных столов нет</option>';
+        return;
+      }
+      select.innerHTML = free
+        .map(t => `<option value="${t.id}">Стол №${t.table_number} · до ${t.capacity} гостей</option>`)
+        .join('');
+    } catch (e) {
+      select.innerHTML = '<option value="">Ошибка загрузки столов</option>';
+    }
+  }
+
+  // ── MENU RENDER ──────────────────────────────────────────────
+  function renderMenu() {
+    const grid = document.getElementById('menu-grid');
+    if (MENU.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Меню пусто — подключитесь к ресторану выше</div>';
+      return;
+    }
+    grid.innerHTML = MENU.map(d => {
+      const qty = basket[d.name] || 0;
+      return `
+        <div class="menu-item ${qty > 0 ? 'in-cart' : ''}" onclick="addToBasket('${d.name}', ${d.price})">
+          ${qty > 0 ? `<span class="qty-badge">${qty}</span>` : ''}
+          <div class="dish-name">${d.name}</div>
+          <div class="dish-price">${d.price.toLocaleString('ru-KZ')} ₸</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function addToBasket(name, price) {
+    basket[name] = (basket[name] || 0) + 1;
+    renderMenu();
+    renderBasket();
+  }
+
+  // ── BASKET RENDER ────────────────────────────────────────────
+  function renderBasket() {
+    const box = document.getElementById('basket-box');
+    const entries = Object.entries(basket).filter(([,q]) => q > 0);
+    if (entries.length === 0) {
+      box.innerHTML = '<div class="basket-empty">Добавьте блюда из меню выше</div>';
+      return;
+    }
+    const total = entries.reduce((s,[n,q]) => {
+      const d = MENU.find(m => m.name === n);
+      return s + (d ? d.price * q : 0);
+    }, 0);
+    box.innerHTML = entries.map(([n, q]) => {
+      const d = MENU.find(m => m.name === n);
+      const sum = d ? d.price * q : 0;
+      return `
+        <div class="basket-row">
+          <span>${n} × ${q}</span>
+          <span style="color:#a5b4fc">${sum.toLocaleString('ru-KZ')} ₸
+            <button onclick="removeFromBasket('${n}')" style="background:none;border:none;color:#ef4444;cursor:pointer;margin-left:8px;font-size:13px">✕</button>
+          </span>
+        </div>
+      `;
+    }).join('') + `<div class="basket-total">Итого: ${total.toLocaleString('ru-KZ')} ₸</div>`;
+  }
+
+  function removeFromBasket(name) {
+    delete basket[name];
+    renderMenu();
+    renderBasket();
+  }
+
+  // ── CREATE ORDER ─────────────────────────────────────────────
+  async function createOrder() {
+    const entries = Object.entries(basket).filter(([,q]) => q > 0);
+    if (entries.length === 0) { toast('Добавьте блюда в корзину!', 'err'); return; }
+
+    const total = entries.reduce((s,[n,q]) => {
+      const d = MENU.find(m => m.name === n);
+      return s + (d ? d.price * q : 0);
+    }, 0);
+
+    const deliveryType = document.getElementById('delivery-type').value;
+    const btn = document.getElementById('btn-order');
+    btn.disabled = true; btn.textContent = '⏳ Отправляем...';
+
+    try {
+      // 1. Create order (status=pending, payment=pending)
+      const r1 = await fetch(`${API}/client/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Restaurant-Key': API_KEY },
+        body: JSON.stringify({
+          total_amount: total,
+          delivery_type: deliveryType,
+          items: entries.map(([name, qty]) => ({
+            dish_name: name, quantity: qty,
+            price_per_unit: MENU.find(m => m.name === name)?.price || 0
+          }))
+        })
+      });
+      const d1 = await r1.json();
+      if (!r1.ok) throw new Error(d1.error);
+
+      const orderId = d1.order_id;
+      toast(`✅ Заказ создан: ${orderId}`, 'ok');
+
+      // 2. Simulate payment webhook (idempotent)
+      const idempKey = 'kaspi_' + Math.random().toString(36).substr(2, 9).toUpperCase();
+      const r2 = await fetch(`${API}/client/payments/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId, idemp_key: idempKey, status: 'success', amount: total })
+      });
+      const d2 = await r2.json();
+      if (!r2.ok) throw new Error(d2.error);
+
+      toast(`💳 Оплачено! Чек: ${d2.receipt?.fiscal_signature || 'OK'} → заказ уходит на кухню`, 'ok');
+      basket = {};
+      renderMenu();
+      renderBasket();
+
+      // Auto-refresh CRM if logged in
+      if (crmToken) setTimeout(refreshAll, 800);
+
+    } catch (e) {
+      toast('Ошибка заказа: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = '✅ Оформить заказ и оплатить';
+    }
+  }
+
+  // ── CREATE RESERVATION ───────────────────────────────────────
+  async function createReservation() {
+    const name   = document.getElementById('res-name').value.trim();
+    const phone  = document.getElementById('res-phone').value.trim();
+    const date   = document.getElementById('res-date').value;
+    const time   = document.getElementById('res-time').value;
+    const guests  = parseInt(document.getElementById('res-guests').value);
+    const tableId = document.getElementById('res-table').value;
+
+    if (!name || !phone || !date || !time) {
+      toast('Заполните все поля бронирования', 'err'); return;
+    }
+    if (!tableId) {
+      toast('Выберите стол (или подключитесь к ресторану)', 'err'); return;
+    }
+
+    try {
+      const r = await fetch(`${API}/client/reservations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Restaurant-Key': API_KEY },
+        body: JSON.stringify({
+          customer_name: name, customer_phone: phone,
+          date, time, guests_count: guests,
+          table_id: tableId
+        })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      toast(`📌 Бронь подтверждена! ID: ${d.reservation?.id?.slice(-6).toUpperCase()}`, 'ok');
+      loadTables(); // забронированный стол уходит из списка свободных
+      if (crmToken) setTimeout(refreshAll, 800);
+    } catch (e) {
+      toast('Ошибка брони: ' + e.message, 'err');
+    }
+  }
+
+  // ── CRM LOGIN ────────────────────────────────────────────────
+  async function quickLogin(email, pass) {
+    document.getElementById('login-email').value = email;
+    document.getElementById('login-pass').value  = pass;
+    await crmLogin();
+  }
+
+  async function crmLogin() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass  = document.getElementById('login-pass').value;
+    const errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+
+    try {
+      const r = await fetch(`${API}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+
+      crmToken = d.token;
+      crmUser  = d.user;
+      document.getElementById('crm-email-display').textContent = d.user.email;
+      document.getElementById('crm-role-display').textContent  = d.user.role;
+      document.getElementById('crm-login').style.display     = 'none';
+      document.getElementById('crm-dashboard').style.display = 'block';
+      toast(`🔐 Вошли как ${d.user.role}`, 'ok');
+      refreshAll();
+      refreshTimer = setInterval(refreshAll, 3000); // auto-poll every 3s
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.style.display = 'block';
+      toast('Ошибка входа: ' + e.message, 'err');
+    }
+  }
+
+  function crmLogout() {
+    clearInterval(refreshTimer);
+    crmToken = null; crmUser = null;
+    document.getElementById('crm-login').style.display     = 'block';
+    document.getElementById('crm-dashboard').style.display = 'none';
+    toast('Сессия CRM закрыта', 'info');
+  }
+
+  // ── TAB SWITCH ───────────────────────────────────────────────
+  function showTab(name, btn) {
+    activeTab = name;
+    document.getElementById('tab-orders').style.display       = name === 'orders' ? '' : 'none';
+    document.getElementById('tab-reservations').style.display = name === 'reservations' ? '' : 'none';
+    document.querySelectorAll('.crm-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  // ── REFRESH ──────────────────────────────────────────────────
+  async function refreshAll() {
+    if (!crmToken) return;
+    await Promise.all([fetchOrders(), fetchReservations()]);
+  }
+
+  // ── ORDERS ───────────────────────────────────────────────────
+  async function fetchOrders() {
+    try {
+      const r = await fetch(`${API}/crm/orders`, {
+        headers: { Authorization: `Bearer ${crmToken}` }
+      });
+      if (!r.ok) { if (r.status === 401) crmLogout(); return; }
+      const d = await r.json();
+      renderOrders(d.orders || []);
+    } catch {}
+  }
+
+  const ORDER_NEXT = { new: 'cooking', cooking: 'ready', ready: 'delivered' };
+  const ORDER_LABELS = { new: '⏳ Новый', cooking: '🔥 Готовится', ready: '✅ Готово', delivered: '📦 Выдан' };
+
+  function renderOrders(orders) {
+    const tbody = document.getElementById('orders-tbody');
+    document.getElementById('orders-count').textContent = `${orders.length} заказов`;
+    if (orders.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет активных заказов</td></tr>';
+      return;
+    }
+    tbody.innerHTML = orders.map(o => {
+      const next = ORDER_NEXT[o.order_status];
+      const nextLabel = ORDER_LABELS[next] || '';
+      return `
+        <tr>
+          <td style="font-family:monospace;color:#818cf8">${o.id.slice(-6).toUpperCase()}</td>
+          <td style="color:#94a3b8;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.delivery_type}">
+            ${o.delivery_type === 'in_restaurant' ? '🍽️ В зале' : '🛍️ С собой'}
+          </td>
+          <td style="font-weight:700;color:#fbbf24">${o.total_amount.toLocaleString('ru-KZ')} ₸</td>
+          <td><span class="status-badge s-${o.payment_status}">${o.payment_status}</span></td>
+          <td><span class="status-badge s-${o.order_status}">${ORDER_LABELS[o.order_status] || o.order_status}</span></td>
+          <td>
+            ${next ? `<button class="action-btn" onclick="advanceOrder('${o.id}','${next}')">→ ${nextLabel}</button>` : '<span style="color:#374151;font-size:10px">Завершён</span>'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function advanceOrder(id, newStatus) {
+    try {
+      const r = await fetch(`${API}/crm/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${crmToken}` },
+        body: JSON.stringify({ order_status: newStatus })
+      });
+      if (!r.ok) throw new Error((await r.json()).error);
+      toast(`Заказ ${id.slice(-6).toUpperCase()} → ${newStatus}`, 'ok');
+      await fetchOrders();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ── RESERVATIONS ─────────────────────────────────────────────
+  async function fetchReservations() {
+    try {
+      const r = await fetch(`${API}/crm/reservations`, {
+        headers: { Authorization: `Bearer ${crmToken}` }
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      renderReservations(d.reservations || []);
+    } catch {}
+  }
+
+  const RES_STATUS_LABELS = { pending: '🕐 Ожидает', confirmed: '✅ Подтверждена', completed: '🏁 Завершена', cancelled: '❌ Отменена' };
+
+  function renderReservations(list) {
+    const tbody = document.getElementById('reservations-tbody');
+    document.getElementById('res-count').textContent = `${list.length} броней`;
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Нет бронирований</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(r => `
+      <tr>
+        <td style="font-weight:600">${r.customer_name}</td>
+        <td style="font-family:monospace;font-size:10px;color:#818cf8">${r.customer_phone}</td>
+        <td><span class="res-time-badge">${r.date} ${r.time}</span></td>
+        <td style="text-align:center">${r.guests_count}</td>
+        <td><span class="status-badge s-${r.status}">${RES_STATUS_LABELS[r.status] || r.status}</span></td>
+        <td>
+          ${r.status === 'pending'    ? `<button class="action-btn" onclick="updateRes('${r.id}','confirmed')">✅ Подтвердить</button>` : ''}
+          ${r.status === 'confirmed'  ? `<button class="action-btn" onclick="updateRes('${r.id}','completed')">🏁 Завершить</button>` : ''}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  async function updateRes(id, newStatus) {
+    try {
+      const r = await fetch(`${API}/crm/reservations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${crmToken}` },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (!r.ok) throw new Error((await r.json()).error);
+      toast(`Бронь обновлена → ${newStatus}`, 'ok');
+      await fetchReservations();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ── INIT ─────────────────────────────────────────────────────
+  // Стенд подключается к тенанту, чей ключ стоит в поле "X-Restaurant-Key" по умолчанию
+  // (демо-ключ из сида БД). Замените значение на ключ любого другого зарегистрированного
+  // ресторана и нажмите "Подключиться" — это и демонстрирует совместимость CRM с любым сайтом.
+  renderMenu();
+  renderBasket();
+  loadTenant();
+</script>
+</body>
+</html>
