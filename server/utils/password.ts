@@ -28,3 +28,14 @@ export function verifyPassword(plainPassword: string, storedHash: string): boole
 export function isHashed(value: string): boolean {
   return /^[a-f0-9]{32,}:[a-f0-9]{32,}$/i.test(value);
 }
+
+/** Случайный одноразовый пароль для сброса (например, сотрудник забыл свой). Без похожих символов (0/O, 1/I/l). */
+export function generateRandomPassword(length = 10): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += alphabet[bytes[i] % alphabet.length];
+  }
+  return out;
+}

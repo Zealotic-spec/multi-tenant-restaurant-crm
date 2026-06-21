@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from "react";
 import { Order, OrderItem } from "../types";
-import { 
-  Clock, 
-  Flame, 
-  ArrowUpRight, 
-  CheckCircle2, 
+import {
+  Clock,
+  Flame,
+  ArrowUpRight,
+  CheckCircle2,
   AlertTriangle,
-  Utensils, 
-  Check, 
+  Utensils,
+  Check,
   FileText,
   Skull,
   ChefHat,
   MonitorPlay,
-  Play
+  Play,
+  MapPin,
+  Radio,
+  Truck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -104,18 +107,18 @@ function KitchenTimerCard({
           </div>
           <div className="text-[11px] font-mono text-slate-400 mt-1 flex items-center gap-1">
             <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-slate-300 border border-slate-700 font-semibold text-[9px]">
-              {order.delivery_type === "in_restaurant"
-                ? `СТОЛ #${order.table_id?.split("_")?.[2] || "КЛИЕНТ"}`
-                : order.delivery_type === "delivery"
-                ? "🚚 ДОСТАВКА"
-                : "С СОБОЙ"}
+              {order.delivery_type === "in_restaurant" ? (
+                `СТОЛ #${order.table_id?.split("_")?.[2] || "КЛИЕНТ"}`
+              ) : order.delivery_type === "delivery" ? (
+                <span className="flex items-center gap-1"><Truck className="w-2.5 h-2.5" /> ДОСТАВКА</span>
+              ) : "С СОБОЙ"}
             </span>
             <span className="text-slate-500">•</span>
             <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           {order.delivery_type === "delivery" && (
-            <div className="text-[10px] font-mono text-slate-500 mt-1 max-w-[220px] truncate">
-              📍 {order.delivery_address} {order.customer_name ? `· ${order.customer_name}` : ""} {order.customer_phone ? `· ${order.customer_phone}` : ""}
+            <div className="text-[10px] font-mono text-slate-500 mt-1 max-w-[220px] truncate flex items-center gap-1">
+              <MapPin className="w-2.5 h-2.5 shrink-0" /> {order.delivery_address} {order.customer_name ? `· ${order.customer_name}` : ""} {order.customer_phone ? `· ${order.customer_phone}` : ""}
             </div>
           )}
         </div>
@@ -231,11 +234,11 @@ export default function KitchenDashboard({ orders, onUpdateStatus, isLoading }: 
   };
 
   // Group columns for Kanban board
-  const orderColumns: { key: Order["order_status"]; title: string; color: string; border: string; glow: string }[] = [
-    { key: "new", title: "Новый / Оплачен 📡", color: "text-sky-400", border: "border-sky-500/20", glow: "shadow-[inset_0_0_10px_rgba(56,189,248,0.02)]" },
-    { key: "cooking", title: "Готовится 🍳", color: "text-amber-400", border: "border-amber-500/20", glow: "shadow-[inset_0_0_10px_rgba(251,191,36,0.02)]" },
-    { key: "ready", title: "Готов на раздаче 🍽️", color: "text-emerald-400", border: "border-emerald-500/20", glow: "shadow-[inset_0_0_10px_rgba(16,185,129,0.02)]" },
-    { key: "out_for_delivery", title: "Курьер в пути 🚚", color: "text-violet-400", border: "border-violet-500/20", glow: "shadow-[inset_0_0_10px_rgba(167,139,250,0.02)]" }
+  const orderColumns: { key: Order["order_status"]; title: string; Icon: typeof Radio; color: string; border: string; glow: string }[] = [
+    { key: "new", title: "Новый / Оплачен", Icon: Radio, color: "text-sky-400", border: "border-sky-500/20", glow: "shadow-[inset_0_0_10px_rgba(56,189,248,0.02)]" },
+    { key: "cooking", title: "Готовится", Icon: ChefHat, color: "text-amber-400", border: "border-amber-500/20", glow: "shadow-[inset_0_0_10px_rgba(251,191,36,0.02)]" },
+    { key: "ready", title: "Готов на раздаче", Icon: Utensils, color: "text-emerald-400", border: "border-emerald-500/20", glow: "shadow-[inset_0_0_10px_rgba(16,185,129,0.02)]" },
+    { key: "out_for_delivery", title: "Курьер в пути", Icon: Truck, color: "text-violet-400", border: "border-violet-500/20", glow: "shadow-[inset_0_0_10px_rgba(167,139,250,0.02)]" }
   ];
 
   return (
@@ -297,7 +300,8 @@ export default function KitchenDashboard({ orders, onUpdateStatus, isLoading }: 
               >
                 {/* Column Header */}
                 <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3 mb-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <col.Icon className={`w-3.5 h-3.5 ${col.color}`} />
                     <span className={`text-xs font-bold font-mono uppercase tracking-wider ${col.color}`}>
                       {col.title}
                     </span>

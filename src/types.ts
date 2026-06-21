@@ -77,6 +77,10 @@ export interface MenuItem {
   price: number;
   category?: string;
   is_available: boolean;
+  image_url?: string;
+  description?: string;
+  badge_label?: string;
+  badge_color?: "emerald" | "amber" | "red" | "indigo" | "purple";
 }
 
 // Client Side Interface wrappers

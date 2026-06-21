@@ -99,6 +99,10 @@ export interface MenuItem {
   price: number;
   category?: string;
   is_available: boolean;
+  image_url?: string;
+  description?: string;
+  badge_label?: string;
+  badge_color?: "emerald" | "amber" | "red" | "indigo" | "purple";
 }
 
 // ─── Подключение к SQLite (node:sqlite, встроен в Node >= 22.5, без зависимостей) ───
@@ -226,6 +230,10 @@ ensureColumn("orders", "customer_name", "TEXT");
 ensureColumn("orders", "customer_phone", "TEXT");
 ensureColumn("restaurants", "founder_id", "TEXT");
 ensureColumn("restaurants", "archived_at", "TEXT");
+ensureColumn("menu_items", "image_url", "TEXT");
+ensureColumn("menu_items", "description", "TEXT");
+ensureColumn("menu_items", "badge_label", "TEXT");
+ensureColumn("menu_items", "badge_color", "TEXT");
 
 // Переименование роли "tenant_owner" → "founder" для уже существующих БД (идемпотентно).
 conn.exec("UPDATE users SET role = 'founder' WHERE role = 'tenant_owner'");
@@ -251,6 +259,10 @@ function rowToMenuItem(row: any): MenuItem {
     price: row.price,
     category: row.category ?? undefined,
     is_available: toBool(row.is_available),
+    image_url: row.image_url ?? undefined,
+    description: row.description ?? undefined,
+    badge_label: row.badge_label ?? undefined,
+    badge_color: row.badge_color ?? undefined,
   };
 }
 
@@ -323,6 +335,10 @@ const users = {
   findByRestaurant(restaurantId: string): User[] {
     return conn.prepare("SELECT * FROM users WHERE restaurant_id = ?").all(restaurantId) as unknown as User[];
   },
+  findByIdAndRestaurant(id: string, restaurantId: string): User | undefined {
+    return conn.prepare("SELECT * FROM users WHERE id = ? AND restaurant_id = ?").get(id, restaurantId) as
+      unknown as User | undefined;
+  },
   findAllRedacted(): Omit<User, "password_hash">[] {
     return conn
       .prepare("SELECT id, restaurant_id, email, role FROM users ORDER BY restaurant_id ASC")
@@ -340,6 +356,20 @@ const users = {
       .prepare("INSERT INTO users (id, restaurant_id, email, password_hash, role) VALUES (?, ?, ?, ?, ?)")
       .run(user.id, user.restaurant_id, user.email, user.password_hash, user.role);
     return user;
+  },
+  /** Увольнение сотрудника — строго в пределах своего ресторана (restaurant_id из JWT founder/manager). */
+  delete(id: string, restaurantId: string): User | undefined {
+    const existing = users.findByIdAndRestaurant(id, restaurantId);
+    if (!existing) return undefined;
+    conn.prepare("DELETE FROM users WHERE id = ? AND restaurant_id = ?").run(id, restaurantId);
+    return existing;
+  },
+  /** Сброс пароля сотрудника (например, если он забыл свой). Хэш уже посчитан вызывающей стороной. */
+  resetPassword(id: string, restaurantId: string, newPasswordHash: string): User | undefined {
+    const existing = users.findByIdAndRestaurant(id, restaurantId);
+    if (!existing) return undefined;
+    conn.prepare("UPDATE users SET password_hash = ? WHERE id = ? AND restaurant_id = ?").run(newPasswordHash, id, restaurantId);
+    return { ...existing, password_hash: newPasswordHash };
   },
 };
 
@@ -571,7 +601,18 @@ const menuItems = {
     const row = conn.prepare("SELECT * FROM menu_items WHERE id = ? AND restaurant_id = ?").get(id, restaurantId);
     return row ? rowToMenuItem(row) : undefined;
   },
-  create(data: { restaurant_id: string; name: string; price: number; category?: string; is_available?: boolean; id?: string }): MenuItem {
+  create(data: {
+    restaurant_id: string;
+    name: string;
+    price: number;
+    category?: string;
+    is_available?: boolean;
+    image_url?: string;
+    description?: string;
+    badge_label?: string;
+    badge_color?: MenuItem["badge_color"];
+    id?: string;
+  }): MenuItem {
     const item: MenuItem = {
       id: data.id || `menu_${randomUUID()}`,
       restaurant_id: data.restaurant_id,
@@ -579,12 +620,27 @@ const menuItems = {
       price: data.price,
       category: data.category,
       is_available: data.is_available ?? true,
+      image_url: data.image_url,
+      description: data.description,
+      badge_label: data.badge_label,
+      badge_color: data.badge_color,
     };
     conn
       .prepare(
-        "INSERT INTO menu_items (id, restaurant_id, name, price, category, is_available) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO menu_items (id, restaurant_id, name, price, category, is_available, image_url, description, badge_label, badge_color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(item.id, item.restaurant_id, item.name, item.price, item.category ?? null, item.is_available ? 1 : 0);
+      .run(
+        item.id,
+        item.restaurant_id,
+        item.name,
+        item.price,
+        item.category ?? null,
+        item.is_available ? 1 : 0,
+        item.image_url ?? null,
+        item.description ?? null,
+        item.badge_label ?? null,
+        item.badge_color ?? null
+      );
     return item;
   },
   update(id: string, restaurantId: string, patch: Partial<Omit<MenuItem, "id" | "restaurant_id">>): MenuItem | undefined {
@@ -592,8 +648,21 @@ const menuItems = {
     if (!existing) return undefined;
     const merged: MenuItem = { ...existing, ...patch };
     conn
-      .prepare("UPDATE menu_items SET name = ?, price = ?, category = ?, is_available = ? WHERE id = ? AND restaurant_id = ?")
-      .run(merged.name, merged.price, merged.category ?? null, merged.is_available ? 1 : 0, id, restaurantId);
+      .prepare(
+        "UPDATE menu_items SET name = ?, price = ?, category = ?, is_available = ?, image_url = ?, description = ?, badge_label = ?, badge_color = ? WHERE id = ? AND restaurant_id = ?"
+      )
+      .run(
+        merged.name,
+        merged.price,
+        merged.category ?? null,
+        merged.is_available ? 1 : 0,
+        merged.image_url ?? null,
+        merged.description ?? null,
+        merged.badge_label ?? null,
+        merged.badge_color ?? null,
+        id,
+        restaurantId
+      );
     return merged;
   },
   delete(id: string, restaurantId: string): MenuItem | undefined {
@@ -690,23 +759,23 @@ function seed() {
   // указывает на них, а сами строки users создаются чуть ниже.
   const tenantA = restaurants.create({
     id: "rest_tenant_a",
-    name: "[Название организации A / Tenant A]",
+    name: "[Ресторан A]",
     api_key: "api_key_tenant_a_2026",
     founder_id: "usr_ta_owner",
   });
   const tenantB = restaurants.create({
     id: "rest_tenant_b",
-    name: "[Название организации B / Tenant B]",
+    name: "[Ресторан B]",
     api_key: "api_key_tenant_b_2026",
     founder_id: "usr_tb_owner",
   });
-  // Третий тенант демонстрирует подключение произвольного внешнего сайта ресторана
+  // Третий ресторан демонстрирует подключение произвольного внешнего сайта ресторана
   // (см. INTEGRATION.md) через X-Restaurant-Key. Имя — универсальный placeholder,
-  // как и у tenant_a/tenant_b: брокер не должен знать о бренде конкретного сайта,
+  // как и у ресторанов A/B: брокер не должен знать о бренде конкретного сайта,
   // реальное название и оформление живут только на стороне сайта ресторана.
   const tenantC = restaurants.create({
     id: "rest_tenant_c",
-    name: "[Название организации C / Tenant C — внешний сайт-интеграция]",
+    name: "[Ресторан C — внешний сайт-интеграция]",
     api_key: "api_key_tenant_c_2026",
     founder_id: "usr_tc_owner",
   });
@@ -727,7 +796,7 @@ function seed() {
 
   // Демо-код приглашения для самостоятельной регистрации нового founder'а (см. POST /auth/register).
   // Фиксированное значение — чтобы его можно было использовать в curl-тестах и документации.
-  inviteCodes.create({ code: "DEMO-0001-INVT", note: "Демо-код для тестовой регистрации нового основателя/организации" });
+  inviteCodes.create({ code: "DEMO-0001-INVT", note: "Демо-код для тестовой регистрации нового основателя/ресторана" });
 
   const tablesSeed: Array<Omit<DiningTable, "id">> = [
     { restaurant_id: tenantA.id, table_number: 1, capacity: 2, x_pos: 15, y_pos: 20, current_status: "free" },

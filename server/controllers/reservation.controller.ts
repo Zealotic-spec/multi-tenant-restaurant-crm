@@ -62,18 +62,24 @@ export function clientCreateReservation(req: SecureRequest, res: Response) {
 
   // If validation passes, create the reservation record
   const newReservation = db.reservations.create({
-    restaurant_id, // Confinement Key
+    restaurant_id,
     customer_name,
     customer_phone,
     date,
     time,
     guests_count: Number(guests_count),
     table_id,
-    status: "confirmed", // Auto-confirm on client simulation for seamless experience
+    status: "confirmed",
   });
 
-  // Set the table status to 'reserved' in the floor plan to showcase reactive visual updates
-  db.tables.setStatus(table_id, "reserved");
+  // Обновляем статус стола только если бронь на сегодня и время уже наступило (±2ч от сейчас).
+  // Так стол не "зависает" как "reserved" на весь день после будущего бронирования.
+  const todayStr = new Date().toISOString().split("T")[0];
+  const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+  const resMins = parseTimeToMinutes(time);
+  if (date === todayStr && Math.abs(nowMins - resMins) < 120) {
+    db.tables.setStatus(table_id, "reserved");
+  }
   const updatedTable = db.tables.findByIdAndRestaurant(table_id, restaurant_id);
 
   res.status(201).json({

@@ -8,12 +8,15 @@ import { crmTenantAuth, requireRole, SecureRequest } from "./server/middlewares/
 
 const SENSITIVE_BODY_FIELDS = ["password", "owner_password", "password_hash"];
 
-/** Убирает пароли/хэши из тела запроса перед записью в системные логи. */
+/** Убирает пароли/хэши, а также обрезает крупные base64-поля (фото блюд) перед записью в системные логи. */
 function redactSensitiveFields(body: unknown): unknown {
   if (!body || typeof body !== "object") return body;
   const clone: Record<string, unknown> = { ...(body as Record<string, unknown>) };
   for (const field of SENSITIVE_BODY_FIELDS) {
     if (field in clone) clone[field] = "***REDACTED***";
+  }
+  if (typeof clone.image_url === "string" && clone.image_url.length > 100) {
+    clone.image_url = `[base64 image, ${clone.image_url.length} chars truncated]`;
   }
   return clone;
 }
@@ -37,7 +40,8 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(corsMiddleware);
-  app.use(express.json());
+  // Лимит увеличен с дефолтных 100kb — фото блюд меню загружаются как base64 data URL в JSON body.
+  app.use(express.json({ limit: "6mb" }));
 
   app.use((req, res, next) => {
     const originalSend = res.send;

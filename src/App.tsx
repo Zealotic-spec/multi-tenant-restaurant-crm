@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   BookOpen,
@@ -32,68 +32,38 @@ import {
   Store,
   Crown,
   Briefcase,
+  ImagePlus,
+  ImageOff,
+  Bell,
+  AlertTriangle,
+  Lightbulb,
+  TrendingUp,
+  ClipboardList,
+  Armchair,
+  ChefHat,
+  Truck,
+  ExternalLink,
+  Copy,
+  KeyRound,
+  X,
+  Leaf,
+  Star,
+  Flame,
+  Sparkles,
+  Award,
+  Tag,
+  ShoppingCart,
 } from "lucide-react";
 import InteractiveMap from "./components/InteractiveMap";
 import KitchenDashboard from "./components/KitchenDashboard";
-import { Restaurant, User as CrmUser, DiningTable, Reservation, Order, ApiLog, TenantInfo } from "./types";
+import { Restaurant, User as CrmUser, DiningTable, Reservation, Order, ApiLog, MenuItem } from "./types";
 
 // --- API Configurations ---
 const API_BASE = "/api/v1";
 
-// Same seeds as server database mapping
-const TENANTS_INFO: TenantInfo[] = [
-  {
-    id: "rest_tenant_a",
-    name: "[Название организации A / Tenant A]",
-    cuisine: "[Направление кухни организации А / Cuisine A] 🍲",
-    api_key: "api_key_tenant_a_2026",
-    menu: [
-      { name: "[Блюдо 1 / Dish 1]", price: 4500 },
-      { name: "[Блюдо 2 / Dish 2]", price: 19500 },
-      { name: "[Блюдо 3 / Dish 3]", price: 4500 },
-      { name: "[Напиток 1 / Drink 1]", price: 2605 }
-    ],
-    zones: ["[Зона зала A-1]", "[Зона зала A-2]"]
-  },
-  {
-    id: "rest_tenant_b",
-    name: "[Название организации B / Tenant B]",
-    cuisine: "[Направление кухни организации Б / Cuisine B] 🍢",
-    api_key: "api_key_tenant_b_2026",
-    menu: [
-      { name: "[Блюдо 4 / Dish 4]", price: 12500 },
-      { name: "[Напиток 2 / Drink 2]", price: 3200 },
-      { name: "[Блюдо 5 / Dish 5]", price: 8500 },
-      { name: "[Десерт 1 / Dessert 1]", price: 4000 }
-    ],
-    zones: ["[Зона зала B-1]", "[Зона зала B-2]"]
-  }
-];
-
 export default function App() {
   // Navigation State
-  const [activeTab, setActiveTab] = useState<"docs" | "client" | "crm" | "logs">("docs");
-
-  // Multi-tenant Client Website Simulator State
-  const [tenants, setTenants] = useState<TenantInfo[]>(TENANTS_INFO);
-  const [selectedClientTenant, setSelectedClientTenant] = useState<TenantInfo>(TENANTS_INFO[0]);
-  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
-
-  const [reservationForm, setReservationForm] = useState({
-    customer_name: "",
-    customer_phone: "",
-    date: new Date().toISOString().split("T")[0],
-    time: "19:00",
-    guests_count: 2,
-    table_id: ""
-  });
-
-  const [orderDeliveryType, setOrderDeliveryType] = useState<"in_restaurant" | "takeaway">("in_restaurant");
-
-  // Client Basket (Ordered items)
-  const [basket, setBasket] = useState<{ name: string; price: number; quantity: number }[]>([]);
-  const [lastCreatedOrderId, setLastCreatedOrderId] = useState<string | null>(null);
-  const [lastCreatedOrderTotal, setLastCreatedOrderTotal] = useState<number>(0);
+  const [activeTab, setActiveTab] = useState<"docs" | "crm" | "logs">("docs");
 
   // CRM Workspace State
   const [crmLoginEmail, setCrmLoginEmail] = useState("owner@tenant-a.io");
@@ -104,8 +74,18 @@ export default function App() {
   const [crmOrders, setCrmOrders] = useState<Order[]>([]);
   const [crmTables, setCrmTables] = useState<DiningTable[]>([]);
   const [crmEmployees, setCrmEmployees] = useState<{ id: string; email: string; role: string }[]>([]);
-  // Карта столов клиентского сайта (из публичного /client/tables, scoped по X-Restaurant-Key)
-  const [clientTables, setClientTables] = useState<DiningTable[]>([]);
+  // Реальное меню текущего ресторана (через /crm/menu) — никаких заглушек, цены и блюда хранятся в БД.
+  const [crmMenu, setCrmMenu] = useState<MenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [newMenuItemForm, setNewMenuItemForm] = useState({
+    name: "",
+    price: "",
+    category: "",
+    image_url: "",
+    description: "",
+    badge_label: "",
+    badge_color: "" as "" | MenuItem["badge_color"],
+  });
   const [crmActiveTab, setCrmActiveTab] = useState<"reservations" | "orders" | "analytics" | "employees" | "menu" | "tables" | "restaurants" | "my-restaurants">("reservations");
   const [crmError, setCrmError] = useState<string | null>(null);
 
@@ -121,14 +101,6 @@ export default function App() {
 
   const [employeeForm, setEmployeeForm] = useState({ email: "", password: "", role: "hostess" });
 
-  // Client order form (name + phone from site, plus delivery type)
-  const [clientOrderForm, setClientOrderForm] = useState({
-    customer_name: "",
-    customer_phone: "",
-    delivery_type: "in_restaurant" as "in_restaurant" | "takeaway" | "delivery",
-    delivery_address: "",
-  });
-
   // Table management form
   const [tableForm, setTableForm] = useState({ table_number: "", capacity: "4", x_pos: "50", y_pos: "50" });
 
@@ -140,47 +112,47 @@ export default function App() {
   const [dbDump, setDbDump] = useState<any>(null);
   const [alertMsg, setAlertMsg] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  // Отдельные флаги загрузки на каждую кнопку "Обновить" — крутится именно та иконка,
+  // которую нажали, а не все сразу (общий loading используется только для тяжёлых операций типа сброса БД).
+  const [reservationsLoading, setReservationsLoading] = useState(false);
+  const [tablesLoading, setTablesLoading] = useState(false);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   // Helper trigger to auto poll logs & db dumps (Simulating WS / live polling)
   const [tick, setTick] = useState(0);
 
-  // Read URL params on mount — auto-switch to client tab if ?tab=client
+  // Одноразовое окно показа сгенерированного пароля сотрудника (см. /crm/employees/:id/reset-password)
+  const [passwordRevealModal, setPasswordRevealModal] = useState<{ email: string; password: string } | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
+  const [resettingPasswordId, setResettingPasswordId] = useState<string | null>(null);
+
+  // Универсальная модалка подтверждения опасных действий — заменяет window.confirm() во всём приложении.
+  const [confirmModal, setConfirmModal] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
+  const askConfirm = (title: string, description: string, onConfirm: () => void) => {
+    setConfirmModal({ title, description, onConfirm });
+  };
+
+  // Read URL params on mount — auto-switch to crm tab if ?tab=crm
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "client") {
-      setActiveTab("client");
-      // Import cart from site if available
-      try {
-        const raw = localStorage.getItem("saas_cart_transfer");
-        if (raw) {
-          const cartData = JSON.parse(raw);
-          const age = Date.now() - (cartData.timestamp || 0);
-          if (age < 5 * 60 * 1000) { // 5 min freshness
-            const imported = (cartData.items || []).map((i: any) => ({
-              name: i.name,
-              price: i.price,
-              quantity: i.quantity,
-            }));
-            if (imported.length > 0) {
-              setBasket(imported);
-              showToast(`Корзина с сайта загружена: ${imported.length} позиций`, "info");
-            }
-          }
-          localStorage.removeItem("saas_cart_transfer");
-        }
-      } catch {}
+    if (params.get("tab") === "crm") {
+      setActiveTab("crm");
     }
   }, []);
 
-  // SSE / Polling simulator: Refreshes logs, lists, Kanban queue, and table map every 1s
+  // SSE / Polling simulator: Refreshes logs, lists, Kanban queue, and table map every 1.5с.
+  // silent=true — фоновый автообновление, иконка "Обновить" не крутится сама по себе;
+  // крутится только когда staff явно жмёт кнопку (см. onClick на каждой кнопке "Обновить").
   useEffect(() => {
-    fetchLogs();
+    fetchLogs(true);
     fetchDbDump();
     if (crmToken) {
-      fetchCrmReservations(crmToken);
-      fetchCrmOrders(crmToken);
-      fetchCrmTables(crmToken);
-      if (crmUser?.role === "founder" || crmUser?.role === "manager" || crmUser?.role === "super_admin") {
+      fetchCrmReservations(crmToken, true);
+      fetchCrmOrders(crmToken, true);
+      fetchCrmTables(crmToken, true);
+      fetchCrmMenu(crmToken, true);
+      if (crmUser?.role === "founder" || crmUser?.role === "manager") {
         fetchCrmEmployees(crmToken);
       }
       if (crmUser?.role === "founder") {
@@ -208,10 +180,79 @@ export default function App() {
     setTimeout(() => setAlertMsg(null), 5000);
   };
 
+  // ── Алерты персоналу о новых брони/заказах ──
+  // Хостес узнаёт о новой брони, шеф — о новом заказе, через тот же кастомный тост (НЕ браузерный
+  // alert/confirm). Отслеживаем уже виденные ID, чтобы алерт срабатывал только на ПОЯВИВШИЕСЯ
+  // записи, а не на каждый фоновый опрос (он идёт каждые 1.5с).
+  const seenReservationIdsRef = useRef<Set<string> | null>(null);
+  const seenOrderIdsRef = useRef<Set<string> | null>(null);
+
+  // Сброс базовой линии при смене сессии/ресторана — иначе при логине алерты "выстрелят" по всем
+  // уже существующим записям сразу.
+  useEffect(() => {
+    seenReservationIdsRef.current = null;
+    seenOrderIdsRef.current = null;
+  }, [crmToken, crmUser?.restaurant_id]);
+
+  useEffect(() => {
+    const ids = new Set(crmReservations.map((r) => r.id));
+    if (seenReservationIdsRef.current === null) {
+      seenReservationIdsRef.current = ids;
+      return;
+    }
+    const canSeeReservations = ["hostess", "founder", "manager", "super_admin"].includes(crmUser?.role);
+    if (canSeeReservations) {
+      const fresh = crmReservations.filter((r) => !seenReservationIdsRef.current!.has(r.id));
+      if (fresh.length === 1) {
+        showToast(`Новая бронь: ${fresh[0].customer_name} · ${fresh[0].date} в ${fresh[0].time} · ${fresh[0].guests_count} гостей`, "info");
+      } else if (fresh.length > 1) {
+        showToast(`${fresh.length} новых брони поступили`, "info");
+      }
+    }
+    seenReservationIdsRef.current = ids;
+  }, [crmReservations, crmUser?.role]);
+
+  useEffect(() => {
+    const ids = new Set(crmOrders.map((o) => o.id));
+    if (seenOrderIdsRef.current === null) {
+      seenOrderIdsRef.current = ids;
+      return;
+    }
+    const canSeeOrders = ["chef", "founder", "manager", "super_admin"].includes(crmUser?.role);
+    if (canSeeOrders) {
+      const fresh = crmOrders.filter((o) => !seenOrderIdsRef.current!.has(o.id));
+      const typeLabel = (t: Order["delivery_type"]) => t === "in_restaurant" ? "в зале" : t === "takeaway" ? "самовывоз" : "доставка";
+      if (fresh.length === 1) {
+        showToast(`Новый заказ (${typeLabel(fresh[0].delivery_type)}) на ${fresh[0].total_amount.toLocaleString("ru-RU")} ₸`, "info");
+      } else if (fresh.length > 1) {
+        showToast(`${fresh.length} новых заказов поступили`, "info");
+      }
+    }
+    seenOrderIdsRef.current = ids;
+  }, [crmOrders, crmUser?.role]);
+
+  // Конвертирует выбранный файл фото блюда в base64 data URL (хранится прямо в SQLite TEXT-колонке,
+  // объектного хранилища/CDN в проекте нет). Лимит 4MB на файл — запас под общий лимит body 6mb.
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (file.size > 4 * 1024 * 1024) {
+        reject(new Error("Файл слишком большой (максимум 4MB)"));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Системные эндпоинты /system/* теперь требуют Bearer JWT с ролью super_admin —
   // без токена/роли тихо не делаем запрос (избегаем лишних 401 и утечки факта существования эндпоинта).
-  const fetchLogs = async () => {
+  // silent=true — фоновый автополлинг (раз в 1.5с), не дёргает иконку "Обновить";
+  // спиннер крутится только когда staff жмёт кнопку вручную (silent=false, см. onClick ниже).
+  const fetchLogs = async (silent = false) => {
     if (!crmToken || crmUser?.role !== "super_admin") return;
+    if (!silent) setLogsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/system/logs`, {
         headers: { Authorization: `Bearer ${crmToken}` }
@@ -221,6 +262,8 @@ export default function App() {
       setSystemLogs(data);
     } catch (err) {
       console.error(err);
+    } finally {
+      if (!silent) setLogsLoading(false);
     }
   };
 
@@ -270,9 +313,6 @@ export default function App() {
       } else {
         showToast(data.error || "Ошибка сброса", "error");
       }
-      setBasket([]);
-      setLastCreatedOrderId(null);
-      setSelectedTableId(null);
       handleCrmLogout();
     } catch (err) {
       showToast("Ошибка сброса", "error");
@@ -281,15 +321,148 @@ export default function App() {
     }
   };
 
-  const fetchCrmTables = async (token = crmToken) => {
+  const fetchCrmTables = async (token = crmToken, silent = false) => {
     if (!token) return;
+    if (!silent) setTablesLoading(true);
     try {
       const res = await fetch(`${API_BASE}/crm/tables`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       if (res.ok) setCrmTables(data.tables);
-    } catch {}
+    } catch {
+    } finally {
+      if (!silent) setTablesLoading(false);
+    }
+  };
+
+  const fetchCrmMenu = async (token = crmToken, silent = false) => {
+    if (!token) return;
+    if (!silent) setMenuLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/crm/menu`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) setCrmMenu(data.menu);
+    } catch {
+    } finally {
+      if (!silent) setMenuLoading(false);
+    }
+  };
+
+  const handleAddMenuItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!crmToken) return;
+    if (!newMenuItemForm.name.trim() || !newMenuItemForm.price) {
+      showToast("Укажите название блюда и цену", "error");
+      return;
+    }
+    setMenuLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/crm/menu`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${crmToken}` },
+        body: JSON.stringify({
+          name: newMenuItemForm.name.trim(),
+          price: Number(newMenuItemForm.price),
+          category: newMenuItemForm.category.trim() || undefined,
+          image_url: newMenuItemForm.image_url || undefined,
+          description: newMenuItemForm.description.trim() || undefined,
+          badge_label: newMenuItemForm.badge_label.trim() || undefined,
+          badge_color: newMenuItemForm.badge_color || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Блюдо добавлено в меню.");
+        setNewMenuItemForm({ name: "", price: "", category: "", image_url: "", description: "", badge_label: "", badge_color: "" });
+        fetchCrmMenu();
+      } else {
+        showToast(data.error || "Ошибка добавления блюда", "error");
+      }
+    } catch {
+      showToast("Сбой соединения", "error");
+    } finally {
+      setMenuLoading(false);
+    }
+  };
+
+  const handleUpdateMenuPrice = async (id: string, newPrice: number) => {
+    if (!crmToken) return;
+    // Оптимистичное обновление — цена в интерфейсе меняется мгновенно, не дожидаясь ответа сервера
+    setCrmMenu((prev) => prev.map((m) => (m.id === id ? { ...m, price: newPrice } : m)));
+    try {
+      const res = await fetch(`${API_BASE}/crm/menu/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${crmToken}` },
+        body: JSON.stringify({ price: newPrice }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error || "Ошибка обновления цены", "error");
+        fetchCrmMenu(); // откатываем оптимистичное изменение к реальным данным с сервера
+      }
+    } catch {
+      showToast("Сбой соединения", "error");
+      fetchCrmMenu();
+    }
+  };
+
+  const handleToggleMenuAvailability = async (id: string, isAvailable: boolean) => {
+    if (!crmToken) return;
+    setCrmMenu((prev) => prev.map((m) => (m.id === id ? { ...m, is_available: isAvailable } : m)));
+    try {
+      const res = await fetch(`${API_BASE}/crm/menu/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${crmToken}` },
+        body: JSON.stringify({ is_available: isAvailable }),
+      });
+      if (!res.ok) fetchCrmMenu();
+    } catch {
+      fetchCrmMenu();
+    }
+  };
+
+  const handleUpdateMenuImage = async (id: string, imageUrl: string) => {
+    if (!crmToken) return;
+    setCrmMenu((prev) => prev.map((m) => (m.id === id ? { ...m, image_url: imageUrl } : m)));
+    try {
+      const res = await fetch(`${API_BASE}/crm/menu/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${crmToken}` },
+        body: JSON.stringify({ image_url: imageUrl }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Фото блюда обновлено.");
+      } else {
+        showToast(data.error || "Ошибка загрузки фото", "error");
+        fetchCrmMenu();
+      }
+    } catch {
+      showToast("Сбой соединения", "error");
+      fetchCrmMenu();
+    }
+  };
+
+  const handleDeleteMenuItem = async (id: string) => {
+    if (!crmToken) return;
+    try {
+      const res = await fetch(`${API_BASE}/crm/menu/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${crmToken}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Блюдо удалено.");
+        setCrmMenu((prev) => prev.filter((m) => m.id !== id));
+      } else {
+        showToast(data.error || "Ошибка удаления блюда", "error");
+      }
+    } catch {
+      showToast("Сбой соединения", "error");
+    }
   };
 
   const handleAddTable = async (e: React.FormEvent) => {
@@ -323,7 +496,15 @@ export default function App() {
     }
   };
 
-  const handleDeleteTable = async (id: string) => {
+  const handleDeleteTable = (id: string, tableNumber: number) => {
+    askConfirm(
+      "Удалить стол?",
+      `Стол №${tableNumber} будет удалён из карты зала без возможности восстановления.`,
+      () => doDeleteTable(id)
+    );
+  };
+
+  const doDeleteTable = async (id: string) => {
     if (!crmToken) return;
     try {
       const res = await fetch(`${API_BASE}/crm/tables/${id}`, {
@@ -370,21 +551,6 @@ export default function App() {
       if (res.ok) {
         showToast(data.message);
         setRestaurantForm({ name: "", owner_email: "", owner_password: "" });
-        // api_key нового тенанта отдаётся только здесь, в момент создания, тому кто его создал
-        // (super_admin) — публичный каталог /public/restaurants его никогда не раскрывает.
-        // Сразу заносим тенант в локальный каталог симулятора, чтобы продемонстрировать,
-        // как владелец передаёт этот ключ своему сайту для интеграции.
-        if (data.restaurant) {
-          const newTenant: TenantInfo = {
-            id: data.restaurant.id,
-            name: data.restaurant.name,
-            cuisine: "Ресторан",
-            api_key: data.restaurant.api_key,
-            menu: [],
-            zones: [],
-          };
-          setTenants((prev) => [...prev.filter((t) => t.id !== newTenant.id), newTenant]);
-        }
       } else {
         showToast(data.error || "Ошибка создания ресторана", "error");
       }
@@ -393,18 +559,6 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handlePhoneInput = (val: string) => {
-    let digits = val.replace(/\D/g, "");
-    if (digits.startsWith("7") || digits.startsWith("8")) digits = digits.substring(1);
-    digits = digits.substring(0, 10);
-    let formatted = "+7";
-    if (digits.length > 0) formatted += " (" + digits.substring(0, 3);
-    if (digits.length >= 3) formatted += ") " + digits.substring(3, 6);
-    if (digits.length >= 6) formatted += "-" + digits.substring(6, 8);
-    if (digits.length >= 8) formatted += "-" + digits.substring(8, 10);
-    setClientOrderForm((f) => ({ ...f, customer_phone: digits.length === 0 ? "" : formatted }));
   };
 
   // Role display helper
@@ -417,162 +571,14 @@ export default function App() {
     return role;
   };
 
-  // ------------------ API CALLS FROM CLIENT SITE ---------------
-  const handleCreateReservation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTableId) {
-      showToast("Выберите интерактивный столик на карте зала для бронирования!", "error");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const payload = {
-        ...reservationForm,
-        table_id: selectedTableId
-      };
-
-      const res = await fetch(`${API_BASE}/client/reservations`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Restaurant-Key": selectedClientTenant.api_key
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      setTick((t) => t + 1);
-
-      if (res.ok) {
-        showToast(`Бронь #${data.reservation.id.slice(-4).toUpperCase()} подтверждена! Стол №${data.updated_table?.table_number || ""} зарезервирован.`);
-        setReservationForm({
-          customer_name: "",
-          customer_phone: "",
-          date: new Date().toISOString().split("T")[0],
-          time: "19:00",
-          guests_count: 2,
-          table_id: ""
-        });
-        setSelectedTableId(null);
-      } else {
-        showToast(data.error || "Ошибка бронирования", "error");
-      }
-    } catch (err) {
-      showToast("Сбой соединения с сервером", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddToBasket = (dishName: string, price: number) => {
-    setBasket((prev) => {
-      const exists = prev.find((i) => i.name === dishName);
-      if (exists) {
-        return prev.map((i) => (i.name === dishName ? { ...i, quantity: i.quantity + 1 } : i));
-      }
-      return [...prev, { name: dishName, price, quantity: 1 }];
-    });
-  };
-
-  const handleRemoveFromBasket = (dishName: string) => {
-    setBasket((prev) => prev.filter((i) => i.name !== dishName));
-  };
-
-  const handleCreateOrder = async () => {
-    if (basket.length === 0) return;
-    if (clientOrderForm.delivery_type === "in_restaurant" && !selectedTableId) {
-      showToast("Выберите столик на карте зала для привязки заказа 'В заведении'!", "error");
-      return;
-    }
-    if (clientOrderForm.delivery_type === "delivery") {
-      if (!clientOrderForm.delivery_address.trim()) {
-        showToast("Укажите адрес доставки!", "error");
-        return;
-      }
-      if (!clientOrderForm.customer_name.trim() || !clientOrderForm.customer_phone.trim()) {
-        showToast("Для доставки на дом укажите имя и телефон — курьеру нужно с кем связаться!", "error");
-        return;
-      }
-    }
-
-    setLoading(true);
-    const total = basket.reduce((acc, item) => acc + item.price * item.quantity, 0);
-
-    try {
-      const res = await fetch(`${API_BASE}/client/orders`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Restaurant-Key": selectedClientTenant.api_key
-        },
-        body: JSON.stringify({
-          total_amount: total,
-          delivery_type: clientOrderForm.delivery_type,
-          delivery_address: clientOrderForm.delivery_type === "delivery" ? clientOrderForm.delivery_address.trim() : undefined,
-          table_id: clientOrderForm.delivery_type === "in_restaurant" ? selectedTableId : undefined,
-          customer_name: clientOrderForm.customer_name || undefined,
-          customer_phone: clientOrderForm.customer_phone || undefined,
-          items: basket.map((i) => ({
-            dish_name: i.name,
-            quantity: i.quantity,
-            price_per_unit: i.price
-          }))
-        })
-      });
-
-      const data = await res.json();
-      setTick((t) => t + 1);
-
-      if (res.ok) {
-        setLastCreatedOrderId(data.order_id);
-        setLastCreatedOrderTotal(total);
-        setBasket([]);
-        showToast(`Экспресс заказ создан: ${data.order_id}. Статус: pending. Оплатите для отправки шефу.`, "info");
-      } else {
-        showToast(data.error || "Ошибка создания заказа", "error");
-      }
-    } catch (err) {
-      showToast("Сбой транзакции", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSimulatePaymentWebhook = async () => {
-    if (!lastCreatedOrderId) return;
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${API_BASE}/client/payments/webhook`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          order_id: lastCreatedOrderId,
-          // Generate a cryptographically valid unique idempotency token
-          idemp_key: `kaspi_idemp_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-          status: "success",
-          amount: lastCreatedOrderTotal
-        })
-      });
-
-      const data = await response.json();
-      setTick((t) => t + 1);
-
-      if (response.ok) {
-        showToast(`Платеж принят! Выдан фискальный чек: ${data.receipt?.fiscal_signature || "OK"}. Заказ уже готовится на кухне.`);
-        setLastCreatedOrderId(null);
-        setSelectedTableId(null);
-      } else {
-        showToast(data.error || "Ошибка оплаты", "error");
-      }
-    } catch (err) {
-      showToast("Ошибка платежного шлюза", "error");
-    } finally {
-      setLoading(false);
-    }
+  // Бейдж блюда (вегетарианское/хит/острое и т.д.) — цвет привязан к иконке, чтобы карточка
+  // выглядела как на референсном фото, а не зависела от свободного текста.
+  const BADGE_STYLES: Record<NonNullable<MenuItem["badge_color"]>, { classes: string; Icon: typeof Leaf }> = {
+    emerald: { classes: "bg-emerald-500 text-emerald-950", Icon: Leaf },
+    amber: { classes: "bg-amber-400 text-amber-950", Icon: Star },
+    red: { classes: "bg-red-500 text-red-950", Icon: Flame },
+    indigo: { classes: "bg-indigo-400 text-indigo-950", Icon: Sparkles },
+    purple: { classes: "bg-purple-400 text-purple-950", Icon: Award },
   };
 
   // ------------------ CRM ACTIONS (JWT AUTHENTICATED) -----------
@@ -588,6 +594,49 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    if (!crmToken) return;
+    try {
+      const res = await fetch(`${API_BASE}/crm/employees/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${crmToken}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Сотрудник удалён.");
+        fetchCrmEmployees();
+      } else {
+        showToast(data.error || "Ошибка удаления сотрудника", "error");
+      }
+    } catch {
+      showToast("Сбой соединения", "error");
+    }
+  };
+
+  // Сброс пароля сотрудника (если он его забыл) — сервер сам генерирует новый пароль и хэширует
+  // его, а нам открытым текстом отдаёт ровно один раз, чтобы показать в одноразовой модалке.
+  const handleResetEmployeePassword = async (id: string, email: string) => {
+    if (!crmToken) return;
+    setResettingPasswordId(id);
+    try {
+      const res = await fetch(`${API_BASE}/crm/employees/${id}/reset-password`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${crmToken}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPasswordRevealModal({ email: data.email || email, password: data.new_password });
+        setPasswordCopied(false);
+      } else {
+        showToast(data.error || "Ошибка сброса пароля", "error");
+      }
+    } catch {
+      showToast("Сбой соединения", "error");
+    } finally {
+      setResettingPasswordId(null);
     }
   };
 
@@ -617,30 +666,6 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleUpdateMenuPrice = (dishName: string, newPrice: number) => {
-    setTenants((prev) =>
-      prev.map((t) => {
-        if (t.id === crmUser?.restaurant_id) {
-          return {
-            ...t,
-            menu: t.menu.map((m) => (m.name === dishName ? { ...m, price: newPrice } : m))
-          };
-        }
-        return t;
-      })
-    );
-    setSelectedClientTenant((prev) => {
-      if (prev.id === crmUser?.restaurant_id) {
-        return {
-          ...prev,
-          menu: prev.menu.map((m) => (m.name === dishName ? { ...m, price: newPrice } : m))
-        };
-      }
-      return prev;
-    });
-    showToast(`Цена блюда "${dishName}" обновлена до ${newPrice} ₸`);
   };
 
   const handleCrmLogin = async (e: React.FormEvent) => {
@@ -678,7 +703,10 @@ export default function App() {
         fetchCrmReservations(data.token);
         fetchCrmOrders(data.token);
         fetchCrmTables(data.token);
-        if (data.user.role === "founder" || data.user.role === "manager" || data.user.role === "super_admin") {
+        if (data.user.role !== "super_admin") {
+          fetchCrmMenu(data.token);
+        }
+        if (data.user.role === "founder" || data.user.role === "manager") {
           fetchCrmEmployees(data.token);
         }
         if (data.user.role === "founder") {
@@ -720,10 +748,11 @@ export default function App() {
         setFounderRestaurants(data.user.restaurants || []);
         setCrmActiveTab("analytics");
         setRegisterForm({ restaurant_name: "", email: "", password: "", invite_code: "" });
-        showToast(data.message || "Организация зарегистрирована! Добро пожаловать.");
+        showToast(data.message || "Ресторан зарегистрирован! Добро пожаловать.");
         fetchCrmReservations(data.token);
         fetchCrmOrders(data.token);
         fetchCrmTables(data.token);
+        fetchCrmMenu(data.token);
         fetchCrmEmployees(data.token);
         fetchFounderRestaurants(data.token);
       } else {
@@ -811,6 +840,7 @@ export default function App() {
         fetchCrmReservations(data.token);
         fetchCrmOrders(data.token);
         fetchCrmTables(data.token);
+        fetchCrmMenu(data.token);
         fetchCrmEmployees(data.token);
       } else {
         showToast(data.error || "Ошибка переключения", "error");
@@ -824,9 +854,16 @@ export default function App() {
 
   // Архивация (soft-delete) ресторана founder'а — блокируется бэкендом, если есть незавершённые
   // заказы или будущие активные бронирования (см. server/routes/api.ts DELETE /crm/founder/restaurants/:id).
-  const handleArchiveFounderRestaurant = async (restaurantId: string) => {
+  const handleArchiveFounderRestaurant = (restaurantId: string) => {
+    askConfirm(
+      "Архивировать ресторан?",
+      "Действие можно выполнить только если нет активных заказов или будущих бронирований в этом ресторане.",
+      () => doArchiveFounderRestaurant(restaurantId)
+    );
+  };
+
+  const doArchiveFounderRestaurant = async (restaurantId: string) => {
     if (!crmToken) return;
-    if (!window.confirm("Архивировать этот ресторан? Действие можно выполнить только если нет активных заказов/броней.")) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/crm/founder/restaurants/${restaurantId}`, {
@@ -858,19 +895,28 @@ export default function App() {
       if (res.ok) {
         setCrmUser(data.user);
         
-        // Dynamic active routing view based on user role 
+        // Dynamic active routing view based on user role
         if (data.user.role === "chef") {
           setCrmActiveTab("orders");
         } else if (data.user.role === "hostess") {
           setCrmActiveTab("reservations");
+        } else if (data.user.role === "super_admin") {
+          // super_admin управляет платформой (вкладка "Рестораны"), а не данными одного
+          // заведения — Финансы/Сотрудники/Меню/"Мои рестораны" ему недоступны, поэтому
+          // при обновлении страницы безопасный фолбэк — "Рестораны", а не "Финансы".
+          setCrmActiveTab((curr) => (curr === "restaurants" || curr === "reservations" || curr === "tables" || curr === "orders" ? curr : "restaurants"));
         } else {
-          // Keep current view if it's already a valid tab for this role, or defaults to analytics
+          // founder / manager — keep current view if it's already a valid tab for this role, or defaults to analytics
           setCrmActiveTab((curr) => (curr === "orders" || curr === "reservations" || curr === "analytics" || curr === "employees" || curr === "menu" || curr === "tables" || curr === "my-restaurants" ? curr : "analytics"));
         }
 
         fetchCrmReservations(crmToken);
         fetchCrmOrders(crmToken);
-        if (data.user.role === "founder" || data.user.role === "manager" || data.user.role === "super_admin") {
+        fetchCrmTables(crmToken);
+        if (data.user.role !== "super_admin") {
+          fetchCrmMenu(crmToken);
+        }
+        if (data.user.role === "founder" || data.user.role === "manager") {
           fetchCrmEmployees(crmToken);
         }
         if (data.user.role === "founder") {
@@ -885,8 +931,9 @@ export default function App() {
     }
   };
 
-  const fetchCrmReservations = async (token = crmToken) => {
+  const fetchCrmReservations = async (token = crmToken, silent = false) => {
     if (!token) return;
+    if (!silent) setReservationsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/crm/reservations`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -897,11 +944,14 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      if (!silent) setReservationsLoading(false);
     }
   };
 
-  const fetchCrmOrders = async (token = crmToken) => {
+  const fetchCrmOrders = async (token = crmToken, silent = false) => {
     if (!token) return;
+    if (!silent) setOrdersLoading(true);
     try {
       const res = await fetch(`${API_BASE}/crm/orders`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -912,6 +962,8 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      if (!silent) setOrdersLoading(false);
     }
   };
 
@@ -967,81 +1019,6 @@ export default function App() {
     }
   };
 
-  // Synchronize client selected restaurant with login credentials on change
-  const handleClientTenantChange = (tenant: TenantInfo) => {
-    setSelectedClientTenant(tenant);
-    setSelectedTableId(null);
-    setBasket([]);
-    setLastCreatedOrderId(null);
-
-    // Auto-fill fast login inside CRM credentials depending on chosen tenant for easier evaluation
-    if (tenant.id === "rest_tenant_a") {
-      setCrmLoginEmail("owner@tenant-a.io");
-    } else {
-      setCrmLoginEmail("owner@tenant-b.io");
-    }
-  };
-
-  // Синхронизируем каталог тенантов с публичным эндпоинтом /public/restaurants (без auth).
-  // Это и есть точка входа для "любого сайта ресторана": каталог отдаёт только id/name,
-  // api_key никогда не раскрывается через этот канал — его получает только super_admin
-  // в момент регистрации ресторана (см. handleCreateRestaurant) и передаёт владельцу напрямую.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/public/restaurants`);
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        const list = data?.restaurants;
-        if (!Array.isArray(list)) return;
-        const dynamicTenants: TenantInfo[] = list.map((r: any) => {
-          const existing = tenants.find((t) => t.id === r.id);
-          return existing
-            ? { ...existing, name: r.name }
-            : { id: r.id, name: r.name, cuisine: "Ресторан", api_key: "", menu: [], zones: [] };
-        });
-        if (JSON.stringify(dynamicTenants.map((t) => t.id)) !== JSON.stringify(tenants.map((t) => t.id))) {
-          setTenants(dynamicTenants);
-          if (!dynamicTenants.find((t) => t.id === selectedClientTenant.id) && dynamicTenants.length > 0) {
-            setSelectedClientTenant(dynamicTenants[0]);
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tick]);
-
-  // Карта столов клиентского сайта — берётся со scoped эндпоинта /client/tables по X-Restaurant-Key,
-  // никогда из общего db-dump'а. Бронирования других гостей (PII) сюда принципиально не передаются.
-  useEffect(() => {
-    let cancelled = false;
-    if (!selectedClientTenant.api_key) {
-      setClientTables([]);
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/client/tables`, {
-          headers: { "X-Restaurant-Key": selectedClientTenant.api_key }
-        });
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        const tables = (data?.tables || []).map((t: any) => ({ ...t, restaurant_id: selectedClientTenant.id }));
-        setClientTables(tables);
-      } catch (err) {
-        console.error(err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tick, selectedClientTenant.id, selectedClientTenant.api_key]);
-
   return (
     <div id="full_saas_shell" className="min-h-screen bg-[#07070a] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 selection:text-white">
       
@@ -1053,10 +1030,10 @@ export default function App() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-md font-bold font-display tracking-tight text-white uppercase">REZO-MATRIX</h1>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-indigo-400 border border-indigo-500/20">MULTITENANT SaaS CRM v2.0</span>
+              <h1 className="text-md font-bold font-display tracking-tight text-white">RestoCRM</h1>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900 text-indigo-400 border border-indigo-500/20">Платформа для ресторанов · v2.0</span>
             </div>
-            <p className="text-[11px] font-mono text-slate-500 tracking-wider">SECURE ISOLATION GATEWAY // CYBER CONSOLE</p>
+            <p className="text-[11px] text-slate-500 tracking-wide">Управление рестораном в одном месте</p>
           </div>
         </div>
 
@@ -1098,8 +1075,124 @@ export default function App() {
           >
             {alertMsg.type === "success" && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
             {alertMsg.type === "error" && <AlertOctagon className="w-4 h-4 text-red-400 shrink-0" />}
-            {alertMsg.type === "info" && <Terminal className="w-4 h-4 text-indigo-400 shrink-0" />}
+            {alertMsg.type === "info" && <Bell className="w-4 h-4 text-indigo-400 shrink-0" />}
             <p className="font-mono leading-relaxed font-semibold">{alertMsg.text}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- УНИВЕРСАЛЬНОЕ МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ (замена window.confirm) --- */}
+      <AnimatePresence>
+        {confirmModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setConfirmModal(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-[0_20px_60px_rgba(0,0,0,0.9)]"
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-red-950/40 border border-red-500/30 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans">{confirmModal.title}</h3>
+                  <p className="text-xs text-slate-400 font-sans mt-1.5 leading-relaxed">{confirmModal.description}</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold font-mono bg-zinc-900 hover:bg-zinc-800 text-slate-300 border border-zinc-800 transition-all cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    confirmModal.onConfirm();
+                    setConfirmModal(null);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold font-mono bg-red-500 hover:bg-red-400 text-red-950 transition-all cursor-pointer"
+                >
+                  Подтвердить
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- МОДАЛЬНОЕ ОКНО ОДНОРАЗОВОГО ПОКАЗА НОВОГО ПАРОЛЯ СОТРУДНИКА --- */}
+      <AnimatePresence>
+        {passwordRevealModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setPasswordRevealModal(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-[0_20px_60px_rgba(0,0,0,0.9)] relative"
+            >
+              <button
+                type="button"
+                onClick={() => setPasswordRevealModal(null)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white cursor-pointer transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                  <KeyRound className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans">Новый пароль создан</h3>
+                  <p className="text-xs text-slate-400 font-sans mt-1.5 leading-relaxed">
+                    Передайте его сотруднику <strong className="text-white">{passwordRevealModal.email}</strong>. Пароль показывается один раз и больше не будет доступен.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-[#050508] border border-zinc-900 rounded-xl px-4 py-3 mb-4">
+                <span className="flex-1 text-sm font-mono font-bold text-amber-400 tracking-wider select-all">{passwordRevealModal.password}</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(passwordRevealModal.password);
+                      setPasswordCopied(true);
+                      setTimeout(() => setPasswordCopied(false), 2000);
+                    } catch {
+                      showToast("Не удалось скопировать пароль", "error");
+                    }
+                  }}
+                  title="Скопировать пароль"
+                  className="w-8 h-8 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 flex items-center justify-center cursor-pointer transition-all shrink-0"
+                >
+                  {passwordCopied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-300" />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPasswordRevealModal(null)}
+                className="w-full bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-bold py-2.5 rounded-xl transition-all font-sans text-xs cursor-pointer"
+              >
+                Готово
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1109,56 +1202,43 @@ export default function App() {
         {/* 2. NEON NAV RAIL (LEFT BAR WITH HIGH CONTRAST BUTTONS) */}
         <aside className="w-72 bg-zinc-950 border-r border-zinc-900/80 flex flex-col justify-between shrink-0 hidden md:flex">
           <div className="p-4 flex flex-col gap-2">
-            <span className="text-[10px] font-mono font-bold text-slate-500 tracking-widest uppercase ml-2 mb-2">SaaS CONTROL DECKS</span>
+            <span className="text-[10px] font-semibold text-slate-500 tracking-widest uppercase ml-2 mb-2">Навигация</span>
 
             <button
               onClick={() => setActiveTab("docs")}
-              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all relative ${
                 activeTab === "docs"
                   ? "bg-indigo-950/30 text-indigo-400 border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.05)]"
                   : "text-slate-500 hover:text-slate-300 border border-transparent hover:bg-zinc-900/50"
               }`}
             >
               <BookOpen className="w-4 h-4" />
-              <span>АРХИТЕКТУРНЫЕ СХЕМЫ</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("client")}
-              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
-                activeTab === "client"
-                  ? "bg-indigo-950/30 text-indigo-400 border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.05)]"
-                  : "text-slate-500 hover:text-slate-300 border border-transparent hover:bg-zinc-900/50"
-              }`}
-            >
-              <Building2 className="w-4 h-4" />
-              <span>СИМУЛЯТОР КЛИЕНТА (API)</span>
-              <span className="absolute right-3.5 w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+              <span>Документация</span>
             </button>
 
             <button
               onClick={() => setActiveTab("crm")}
-              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all relative ${
                 activeTab === "crm"
                   ? "bg-indigo-950/30 text-indigo-400 border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.05)]"
                   : "text-slate-500 hover:text-slate-300 border border-transparent hover:bg-zinc-900/50"
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
-              <span>CRM ПУЛЬТ РЕСТОРАНА</span>
+              <span>CRM</span>
               {crmToken && <span className="absolute right-4 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
             </button>
 
             <button
               onClick={() => setActiveTab("logs")}
-              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all relative ${
                 activeTab === "logs"
                   ? "bg-indigo-950/30 text-indigo-400 border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.05)]"
                   : "text-slate-500 hover:text-slate-300 border border-transparent hover:bg-zinc-900/50"
               }`}
             >
               <Terminal className="w-4 h-4" />
-              <span>ИНСПЕКТОР ЛОГОВ API</span>
+              <span>Системные логи</span>
               {systemLogs.length > 0 && (
                 <span className="ml-auto bg-zinc-900 px-2 py-0.5 rounded text-[10px] text-indigo-400 font-mono font-bold border border-zinc-800">
                   {systemLogs.length}
@@ -1184,15 +1264,15 @@ export default function App() {
                 </div>
                 <button
                   onClick={handleCrmLogout}
-                  className="w-full text-center py-1.5 bg-red-950/20 hover:bg-red-950/50 text-red-400 hover:text-red-350 border border-red-900/30 hover:border-red-500/30 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all cursor-pointer"
+                  className="w-full text-center py-1.5 bg-red-950/20 hover:bg-red-950/50 text-red-400 hover:text-red-300 border border-red-900/30 hover:border-red-500/30 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                 >
-                  ЗАКРЫТЬ СЕССИЮ
+                  Выйти
                 </button>
               </div>
             ) : (
-              <div className="text-[11px] font-mono hover:text-slate-400 text-slate-600 leading-relaxed p-2">
-                <p className="font-bold text-slate-500 uppercase tracking-widest mb-1">CRM ТЕРМИНАЛ: GUEST</p>
-                Авторизуйтесь в CRM, чтобы начать диспетчеризацию зала и распределение канбан-заказов.
+              <div className="text-xs text-slate-500 leading-relaxed p-2">
+                <p className="font-semibold text-slate-400 mb-1">Не авторизованы</p>
+                Войдите в CRM чтобы управлять залом, заказами и бронированиями.
               </div>
             )}
           </div>
@@ -1204,7 +1284,6 @@ export default function App() {
           {/* Mobile Navigation tabs rail */}
           <div className="flex md:hidden flex-wrap gap-2 mb-6 bg-zinc-950 p-2 text-xs border border-zinc-900 rounded-xl">
             <button onClick={() => setActiveTab("docs")} className={`px-3 py-1.5 font-mono rounded-lg transition-all ${activeTab === "docs" ? "bg-indigo-500 text-slate-950 font-bold" : "text-slate-400"}`}>Схемы</button>
-            <button onClick={() => setActiveTab("client")} className={`px-3 py-1.5 font-mono rounded-lg transition-all ${activeTab === "client" ? "bg-indigo-500 text-slate-950 font-bold" : "text-slate-400"}`}>Клиент</button>
             <button onClick={() => setActiveTab("crm")} className={`px-3 py-1.5 font-mono rounded-lg transition-all ${activeTab === "crm" ? "bg-indigo-500 text-slate-950 font-bold" : "text-slate-400"}`}>CRM</button>
             <button onClick={() => setActiveTab("logs")} className={`px-3 py-1.5 font-mono rounded-lg transition-all ${activeTab === "logs" ? "bg-indigo-500 text-slate-950 font-bold" : "text-slate-400"}`}>Логи ({systemLogs.length})</button>
           </div>
@@ -1323,12 +1402,12 @@ CREATE TABLE orders (
                       </div>
 
                       <div className="p-3.5 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-indigo-300 font-mono text-[11px] leading-relaxed">
-                        <span className="font-bold text-white block mb-1">🛡️ Алгоритм контроля overbooking (±2ч):</span>
+                        <span className="font-bold text-white flex items-center gap-1.5 mb-1"><ShieldCheck className="w-3.5 h-3.5 text-indigo-400" /> Алгоритм контроля overbooking (±2ч):</span>
                         При попытке внесения брони система проверяет наличие пересечений времени на выбранном стопике в диапазоне 120 минут до и после запрашиваемого интервала.
                       </div>
 
                       <div className="p-3.5 rounded-xl bg-red-950/10 border border-red-500/10 text-slate-500">
-                        <span className="font-bold text-red-400 block mb-0.5">⚠️ Изоляция арендатора (Global Middleware Guard):</span>
+                        <span className="font-bold text-red-400 flex items-center gap-1.5 mb-0.5"><AlertTriangle className="w-3.5 h-3.5" /> Изоляция арендатора (Global Middleware Guard):</span>
                         Все запросы фильтруются на уровне ядра. Доступ к данным другого ресторана по чужому API или чужому токену выдаст немедленный отказ 403 или 404, защищая персональные данные гостей.
                       </div>
                     </div>
@@ -1350,7 +1429,7 @@ CREATE TABLE orders (
                     <div className="text-slate-600 font-mono text-xs py-10 text-center uppercase space-y-2">
                       <Lock className="w-8 h-8 mx-auto text-zinc-700" />
                       <p>Живой слепок БД доступен только Super Admin</p>
-                      <p className="text-[10px] text-slate-700 font-sans normal-case">Авторизуйтесь в CRM под ролью Super Admin, чтобы увидеть данные всех тенантов</p>
+                      <p className="text-[10px] text-slate-700 font-sans normal-case">Авторизуйтесь в CRM под ролью Super Admin, чтобы увидеть данные всех ресторанов</p>
                     </div>
                   ) : dbDump ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
@@ -1361,7 +1440,7 @@ CREATE TABLE orders (
                           {dbDump.restaurants?.map((r: any) => (
                             <div key={r.id} className="p-2 rounded bg-zinc-900 border border-zinc-800 text-[11px]">
                               <p className="font-bold text-white truncate">{r.name}</p>
-                              <span className="text-indigo-400 font-bold text-[9px] block mt-1">Tenant ID: {r.id}</span>
+                              <span className="text-indigo-400 font-bold text-[9px] block mt-1">ID ресторана: {r.id}</span>
                             </div>
                           ))}
                         </div>
@@ -1423,384 +1502,6 @@ CREATE TABLE orders (
               </motion.div>
             )}
 
-            {/* SCREEN 2: ACTIVE CLIENT WEBSITE SIMULATOR */}
-            {activeTab === "client" && (
-              <motion.div
-                key="client"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-6 max-w-5xl"
-              >
-                {/* ── ШАПЛЕТ: выбор ресторана ─────────────────────────────── */}
-                <div className="bg-gradient-to-r from-zinc-950 to-indigo-950/20 border border-zinc-900 p-5 rounded-2xl shadow-xl">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-lg font-bold font-display text-white flex items-center gap-2">
-                        <Store className="text-indigo-400 w-5 h-5" />
-                        Симулятор клиентского сайта ресторана
-                      </h2>
-                      <p className="text-xs text-slate-400 mt-0.5">Выберите ресторан → выберите стол → оформите заказ или бронь</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {tenants.map((tenant) => (
-                        <button
-                          key={tenant.id}
-                          onClick={() => handleClientTenantChange(tenant)}
-                          className={`px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
-                            selectedClientTenant.id === tenant.id
-                              ? "bg-indigo-500 text-slate-950 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.25)]"
-                              : "bg-zinc-900/60 text-slate-400 border-zinc-800 hover:text-white"
-                          }`}
-                        >
-                          <Store className="w-3.5 h-3.5" />
-                          {tenant.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-zinc-900 flex items-center gap-2 text-[11px] font-mono text-slate-500">
-                    <span className="text-indigo-400 font-bold">API Key:</span>
-                    <span className="text-emerald-400">{selectedClientTenant.api_key}</span>
-                    <span className="text-slate-600 ml-2">|</span>
-                    <span className="text-indigo-400 font-bold ml-2">ID:</span>
-                    <span className="text-slate-400">{selectedClientTenant.id}</span>
-                  </div>
-                </div>
-
-                {/* ── ШАГ 1: КАРТА ЗАЛА ───────────────────────────────────── */}
-                <div className="bg-zinc-950 p-5 rounded-2xl border border-zinc-900 shadow-2xl space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-500 text-slate-950 text-xs font-black shrink-0">1</div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white">Выберите столик на карте зала</h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Нажмите на <span className="text-emerald-400 font-bold">зелёный (свободный)</span> столик — он привяжется к заказу или брони
-                      </p>
-                    </div>
-                  </div>
-                  {clientTables.length === 0 ? (
-                    <div className="py-10 text-center space-y-2">
-                      <MapPin className="w-10 h-10 mx-auto text-zinc-700" />
-                      <p className="text-slate-500 font-mono text-xs uppercase">Карта зала пуста</p>
-                      <p className="text-[11px] text-slate-600 font-sans max-w-xs mx-auto">
-                        Войдите в CRM как Admin или Менеджер и добавьте столы через вкладку «Управление столами»
-                      </p>
-                    </div>
-                  ) : (
-                    <InteractiveMap
-                      tables={clientTables}
-                      activeReservations={[]}
-                      selectedTableId={selectedTableId}
-                      onSelectTable={(id) => setSelectedTableId(id)}
-                      onQuickBook={(tbl) => {
-                        setSelectedTableId(tbl.id);
-                        showToast(`Стол №${tbl.table_number} выбран! Теперь оформите заказ или бронь ниже.`, "info");
-                      }}
-                    />
-                  )}
-                </div>
-
-                {/* ── ШАГ 2 + 3: ЗАКАЗ И БРОНЬ (две колонки) ─────────────── */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                  {/* МОДУЛЬ А: ОФОРМЛЕНИЕ ЗАКАЗА */}
-                  <div className="bg-zinc-950 p-5 rounded-2xl border border-zinc-900 shadow-2xl space-y-4 flex flex-col">
-                    <div className="flex items-center gap-3 border-b border-zinc-900 pb-3">
-                      <div className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-500 text-slate-950 text-xs font-black shrink-0">2</div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">Оформить заказ</h4>
-                        <span className="text-[10px] font-mono text-slate-500">В заведении · С собой · Доставка</span>
-                      </div>
-                    </div>
-
-                    {/* Контактные данные клиента */}
-                    <div className="space-y-3 text-xs">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-slate-500 mb-1.5 font-mono font-bold uppercase text-[10px]">Имя клиента</label>
-                          <div className="relative">
-                            <User className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
-                            <input
-                              type="text"
-                              value={clientOrderForm.customer_name}
-                              onChange={(e) => setClientOrderForm((f) => ({ ...f, customer_name: e.target.value }))}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-lg pl-8 pr-3 py-2.5 text-xs outline-none transition-all font-sans"
-                              placeholder="Алихан"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-slate-500 mb-1.5 font-mono font-bold uppercase text-[10px]">Телефон</label>
-                          <div className="relative">
-                            <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
-                            <input
-                              type="tel"
-                              value={clientOrderForm.customer_phone}
-                              onChange={(e) => handlePhoneInput(e.target.value)}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-lg pl-8 pr-3 py-2.5 text-xs outline-none transition-all font-mono"
-                              placeholder="+7 (777) 000-00-00"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Тип доставки */}
-                      <div>
-                        <label className="block text-slate-500 mb-1.5 font-mono font-bold uppercase text-[10px]">Способ получения</label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {([
-                            { val: "in_restaurant", label: "В заведении", icon: "🪑" },
-                            { val: "takeaway", label: "С собой", icon: "🛍️" },
-                            { val: "delivery", label: "Доставка", icon: "🚚" },
-                          ] as const).map(({ val, label, icon }) => (
-                            <button
-                              key={val}
-                              type="button"
-                              onClick={() => setClientOrderForm((f) => ({ ...f, delivery_type: val }))}
-                              className={`py-2.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                clientOrderForm.delivery_type === val
-                                  ? "bg-indigo-950 text-indigo-300 border-indigo-500/40"
-                                  : "bg-zinc-900/40 text-slate-500 border-transparent hover:text-slate-300"
-                              }`}
-                            >
-                              {icon} {label}
-                            </button>
-                          ))}
-                        </div>
-                        {clientOrderForm.delivery_type === "in_restaurant" && (
-                          <p className={`text-[10px] mt-1.5 font-mono font-bold ${selectedTableId ? "text-emerald-400" : "text-rose-400 animate-pulse"}`}>
-                            {selectedTableId
-                              ? `✓ Стол №${clientTables.find((t) => t.id === selectedTableId)?.table_number} выбран`
-                              : "⬆ Выберите стол на карте (шаг 1)"}
-                          </p>
-                        )}
-                        {clientOrderForm.delivery_type === "delivery" && (
-                          <div className="mt-2">
-                            <input
-                              type="text"
-                              value={clientOrderForm.delivery_address}
-                              onChange={(e) => setClientOrderForm((f) => ({ ...f, delivery_address: e.target.value }))}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-lg px-3 py-2.5 text-xs outline-none transition-all font-sans"
-                              placeholder="Адрес доставки (улица, дом, квартира)"
-                            />
-                            <p className={`text-[10px] mt-1.5 font-mono font-bold ${clientOrderForm.delivery_address.trim() ? "text-emerald-400" : "text-rose-400 animate-pulse"}`}>
-                              {clientOrderForm.delivery_address.trim() ? "✓ Адрес указан" : "⬆ Укажите адрес доставки"}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Меню */}
-                    <div className="space-y-2 flex-1">
-                      <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest block">Меню ресторана</span>
-                      {selectedClientTenant.menu.length === 0 ? (
-                        <p className="text-[11px] text-slate-600 font-sans text-center py-4">Меню не настроено. Войдите как Admin → вкладка «Меню».</p>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          {selectedClientTenant.menu.map((dish) => {
-                            const inBasket = basket.find((i) => i.name === dish.name);
-                            return (
-                              <button
-                                key={dish.name}
-                                onClick={() => handleAddToBasket(dish.name, dish.price)}
-                                className="bg-[#050508] hover:bg-zinc-900 border border-zinc-900 hover:border-indigo-500/30 p-2.5 rounded-xl flex flex-col items-start gap-1 transition-all text-left group cursor-pointer relative"
-                              >
-                                {inBasket && (
-                                  <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-indigo-500 text-white text-[9px] font-black flex items-center justify-center">
-                                    {inBasket.quantity}
-                                  </span>
-                                )}
-                                <span className="text-slate-300 text-xs font-semibold group-hover:text-indigo-300 transition-colors font-sans leading-tight">{dish.name}</span>
-                                <div className="flex items-center justify-between w-full mt-1">
-                                  <span className="text-indigo-300 font-mono font-bold text-xs">{dish.price.toLocaleString()} ₸</span>
-                                  <PlusCircle className="w-3.5 h-3.5 text-zinc-600 group-hover:text-indigo-400" />
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Корзина */}
-                    {basket.length > 0 && (
-                      <div className="bg-[#050508] rounded-xl p-3.5 border border-zinc-900 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">Корзина ({basket.reduce((s, i) => s + i.quantity, 0)} шт.)</span>
-                          <button onClick={() => setBasket([])} className="text-red-500 hover:text-red-400 text-[10px] font-mono">очистить</button>
-                        </div>
-                        <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-                          {basket.map((item) => (
-                            <div key={item.name} className="flex justify-between items-center text-xs">
-                              <span className="text-slate-300 font-sans truncate max-w-[140px]">{item.name}</span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button onClick={() => setBasket((b) => b.map((i) => i.name === item.name ? { ...i, quantity: Math.max(1, i.quantity - 1) } : i))} className="text-slate-500 hover:text-white">
-                                  <Minus className="w-3 h-3" />
-                                </button>
-                                <span className="text-white font-mono font-bold w-4 text-center text-[11px]">{item.quantity}</span>
-                                <button onClick={() => handleAddToBasket(item.name, item.price)} className="text-slate-500 hover:text-white">
-                                  <Plus className="w-3 h-3" />
-                                </button>
-                                <button onClick={() => handleRemoveFromBasket(item.name)} className="text-red-500 hover:text-red-400 ml-1">
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="border-t border-zinc-800 pt-2 flex justify-between font-mono font-bold">
-                          <span className="text-slate-500 text-[11px]">Итого:</span>
-                          <span className="text-indigo-300 text-sm">{basket.reduce((a, i) => a + i.price * i.quantity, 0).toLocaleString()} ₸</span>
-                        </div>
-                        <button
-                          onClick={handleCreateOrder}
-                          disabled={loading}
-                          className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs uppercase disabled:opacity-50"
-                        >
-                          <ShoppingBag className="w-4 h-4 stroke-[2.5px]" />
-                          Создать заказ
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Оплата */}
-                    {lastCreatedOrderId && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/30 space-y-3 font-mono text-xs"
-                      >
-                        <p className="font-bold text-white flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-indigo-400" />
-                          Заказ создан — ожидает оплаты
-                        </p>
-                        <p className="text-slate-400 text-[11px]">
-                          ID: <span className="text-white font-bold">{lastCreatedOrderId}</span> · Сумма: <span className="text-indigo-300 font-bold">{lastCreatedOrderTotal.toLocaleString()} ₸</span>
-                        </p>
-                        <button
-                          onClick={handleSimulatePaymentWebhook}
-                          className="w-full bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-extrabold px-3 py-2.5 rounded-lg text-[10px] tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          Симулировать оплату (Webhook)
-                        </button>
-                      </motion.div>
-                    )}
-                  </div>
-
-                  {/* МОДУЛЬ Б: БРОНИРОВАНИЕ СТОЛА */}
-                  <div className="bg-zinc-950 p-5 rounded-2xl border border-zinc-900 shadow-2xl space-y-4 flex flex-col justify-between">
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3 border-b border-zinc-900 pb-3">
-                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-slate-950 text-xs font-black shrink-0">3</div>
-                        <div>
-                          <h4 className="text-sm font-bold text-white">Забронировать стол</h4>
-                          <span className="text-[10px] font-mono text-slate-500">Выберите стол на карте → заполните форму</span>
-                        </div>
-                      </div>
-
-                      <form onSubmit={handleCreateReservation} className="space-y-3 text-xs font-mono">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-slate-500 mb-1.5 font-bold uppercase text-[10px]">Имя гостя</label>
-                            <input
-                              type="text"
-                              required
-                              value={reservationForm.customer_name}
-                              onChange={(e) => setReservationForm({ ...reservationForm, customer_name: e.target.value })}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 text-xs font-semibold outline-none transition-all font-sans"
-                              placeholder="Ваше имя"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-slate-500 mb-1.5 font-bold uppercase text-[10px]">Телефон</label>
-                            <input
-                              type="tel"
-                              required
-                              value={reservationForm.customer_phone}
-                              onChange={(e) => setReservationForm({ ...reservationForm, customer_phone: e.target.value })}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 text-xs font-semibold outline-none transition-all font-mono"
-                              placeholder="+7 705 ..."
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-slate-500 mb-1.5 font-bold uppercase text-[10px]">Дата визита</label>
-                            <input
-                              type="date"
-                              required
-                              value={reservationForm.date}
-                              onChange={(e) => setReservationForm({ ...reservationForm, date: e.target.value })}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 text-xs font-semibold outline-none transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-slate-500 mb-1.5 font-bold uppercase text-[10px]">Время</label>
-                            <input
-                              type="time"
-                              required
-                              value={reservationForm.time}
-                              onChange={(e) => setReservationForm({ ...reservationForm, time: e.target.value })}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 text-xs font-semibold outline-none transition-all"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-slate-500 mb-1.5 font-bold">Количество персон:</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="12"
-                              required
-                              value={reservationForm.guests_count}
-                              onChange={(e) => setReservationForm({ ...reservationForm, guests_count: Number(e.target.value) })}
-                              className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-lg p-2.5 text-xs font-semibold outline-none transition-all"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-slate-500 mb-1.5 font-bold">Выделенный столик:</label>
-                            <input
-                              type="text"
-                              disabled
-                              value={selectedTableId ? `ВЫБРАН СТОЛ #${clientTables.find(t=>t.id===selectedTableId)?.table_number || ""}` : "ВЫБЕРИТЕ НА КАРТЕ 🧭"}
-                              className={`w-full bg-zinc-900 border border-zinc-900 rounded-lg p-2.5 text-xs font-bold outline-none leading-none ${selectedTableId ? "text-emerald-400" : "text-rose-400 animate-pulse"}`}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="pt-2">
-                          <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-display font-extrabold py-3 px-4 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer text-xs uppercase"
-                          >
-                            <Send className="w-3.5 h-3.5 stroke-[3px]" />
-                            ЗАРЕГИСТРИРОВАТЬ РЕЗЕРВИРОВАНИЕ
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-
-                    {/* Network isolation info labels */}
-                    <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-900 text-[10px] space-y-1 mt-4">
-                      <p className="text-slate-400 font-semibold flex items-center gap-1">
-                        <Lock className="w-3 h-3 text-indigo-400" />
-                        РЕКВИЗИТЫ БЕЗОПАСНОСТИ WIDGET:
-                      </p>
-                      <p className="font-mono text-slate-500 leading-4">Header Key: <span className="text-emerald-400">X-Restaurant-Key: {selectedClientTenant.api_key}</span></p>
-                      <p className="font-mono text-slate-500 leading-4">Mapped Context ID <span className="text-indigo-400">restaurant_id: {selectedClientTenant.id}</span></p>
-                    </div>
-                  </div>
-
-                </div>
-              </motion.div>
-            )}
-
             {/* SCREEN 3: PROFESSIONAL CRM PANELS (AUTHORIZED INTERNAL EMPLOYEES CONTROL ROOM) */}
             {activeTab === "crm" && (
               <motion.div
@@ -1816,11 +1517,15 @@ CREATE TABLE orders (
                     <div className="absolute top-0 right-1/2 translate-x-1/2 w-48 h-48 bg-indigo-500/5 rounded-full blur-2xl pointer-events-none" />
 
                     <div className="text-center space-y-1 pb-3 border-b border-zinc-900">
-                      <Lock className="w-8 h-8 mx-auto text-indigo-400 mb-1" />
-                      <h3 className="text-base font-bold font-display text-white uppercase tracking-wider">
-                        {crmAuthMode === "login" ? "Вход в пульт CRM ресторанов" : "Регистрация основателя"}
+                      <div className="w-10 h-10 mx-auto mb-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                        <Lock className="w-5 h-5 text-white" />
+                      </div>
+                      <h3 className="text-base font-bold font-display text-white">
+                        {crmAuthMode === "login" ? "Войти в RestoCRM" : "Регистрация нового ресторана"}
                       </h3>
-                      <p className="text-[11px] font-mono text-slate-500">ISSUING JWT BEARER TOKEN // MULTI-TENANCY CONTEXT</p>
+                      <p className="text-[12px] text-slate-500">
+                        {crmAuthMode === "login" ? "Введите email и пароль вашего аккаунта" : "Нужен код приглашения от поставщика"}
+                      </p>
                     </div>
 
                     {crmError && (
@@ -1830,55 +1535,45 @@ CREATE TABLE orders (
                     )}
 
                     {crmAuthMode === "login" ? (
-                      <form onSubmit={handleCrmLogin} className="space-y-4 text-xs font-mono">
+                      <form onSubmit={handleCrmLogin} className="space-y-4">
                         <div>
-                          <label className="block text-slate-500 mb-1.5 font-bold uppercase tracking-widest">АКТИВНАЯ УЧЕТНАЯ ЗАПИСЬ:</label>
-                          <select
+                          <label className="block text-slate-400 text-xs font-semibold mb-1.5">Email</label>
+                          <input
+                            type="email"
+                            required
+                            placeholder="your@email.com"
                             value={crmLoginEmail}
                             onChange={(e) => setCrmLoginEmail(e.target.value)}
-                            className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-xl p-3 outline-none font-bold transition-all text-xs"
-                          >
-                            <optgroup label="Организация A">
-                              <option value="owner@tenant-a.io">owner@tenant-a.io — Основатель</option>
-                              <option value="hostess@tenant-a.io">hostess@tenant-a.io — Хостес</option>
-                              <option value="chef@tenant-a.io">chef@tenant-a.io — Шеф-повар</option>
-                            </optgroup>
-                            <optgroup label="Организация Б">
-                              <option value="owner@tenant-b.io">owner@tenant-b.io — Основатель</option>
-                              <option value="hostess@tenant-b.io">hostess@tenant-b.io — Хостес</option>
-                              <option value="chef@tenant-b.io">chef@tenant-b.io — Шеф-повар</option>
-                            </optgroup>
-                            <optgroup label="SaaS Провайдер">
-                              <option value="superadmin@saas.io">superadmin@saas.io — Super Admin (владелец CRM)</option>
-                            </optgroup>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-slate-500 mb-1.5 font-bold uppercase tracking-widest">ПАРОЛЬ СЕССИИ:</label>
-                          <input
-                            type="password"
-                            required
-                            value={crmLoginPassword}
-                            onChange={(e) => setCrmLoginPassword(e.target.value)}
-                            className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-xl p-3 outline-none text-xs transition-all font-mono"
+                            className="w-full bg-[#050508] text-white border border-zinc-800 focus:border-indigo-500 rounded-xl p-3 outline-none transition-all text-sm placeholder:text-slate-600"
                           />
                         </div>
 
-                        <div className="pt-2">
+                        <div>
+                          <label className="block text-slate-400 text-xs font-semibold mb-1.5">Пароль</label>
+                          <input
+                            type="password"
+                            required
+                            placeholder="••••••••"
+                            value={crmLoginPassword}
+                            onChange={(e) => setCrmLoginPassword(e.target.value)}
+                            className="w-full bg-[#050508] text-white border border-zinc-800 focus:border-indigo-500 rounded-xl p-3 outline-none text-sm transition-all placeholder:text-slate-600"
+                          />
+                        </div>
+
+                        <div className="pt-1">
                           <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-display font-extrabold py-3 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 text-xs cursor-pointer flex items-center justify-center gap-2 uppercase tracking-wide"
+                            className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 text-sm cursor-pointer flex items-center justify-center gap-2"
                           >
-                            <UserCheck className="w-4 h-4 text-slate-950 stroke-[3px]" />
-                            ПОДКЛЮЧИТЬ ПАНЕЛЬ УПРАВЛЕНИЯ
+                            <UserCheck className="w-4 h-4 stroke-[2.5px]" />
+                            Войти
                           </button>
                         </div>
 
-                        <div className="bg-[#050508] rounded-xl p-3 text-[10px] leading-relaxed border border-zinc-900 text-slate-500 font-sans">
-                          <span className="font-bold text-slate-400 font-mono tracking-widest block uppercase text-[9px] mb-1">💡 Изоляция аутентификации:</span>
-                          Бэкенд генерирует криптографический JWT Bearer токен с правами роли сотрудника. На любой HTTP запрос к API сервер проверяет соответствие ресторана сотрудника и отсекает неавторизованные запросы.
+                        <div className="bg-zinc-900/50 rounded-xl p-3 text-xs text-slate-500 border border-zinc-900">
+                          <span className="font-semibold text-slate-400 flex items-center gap-1.5 mb-1"><Lightbulb className="w-3.5 h-3.5 text-amber-400" /> Для демо:</span>
+                          owner@tenant-a.io / password123
                         </div>
                       </form>
                     ) : (
@@ -1938,13 +1633,13 @@ CREATE TABLE orders (
                             className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-display font-extrabold py-3 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 text-xs cursor-pointer flex items-center justify-center gap-2 uppercase tracking-wide"
                           >
                             <Crown className="w-4 h-4 text-slate-950 stroke-[3px]" />
-                            ЗАРЕГИСТРИРОВАТЬ ОРГАНИЗАЦИЮ
+                            ЗАРЕГИСТРИРОВАТЬ РЕСТОРАН
                           </button>
                         </div>
 
                         <div className="bg-[#050508] rounded-xl p-3 text-[10px] leading-relaxed border border-zinc-900 text-slate-500 font-sans">
-                          <span className="font-bold text-slate-400 font-mono tracking-widest block uppercase text-[9px] mb-1">💡 Независимый tenant:</span>
-                          Регистрация создаёт только аккаунт основателя и его первый ресторан — отдельный tenant со своим свежим api_key. Сотрудников (менеджер/шеф-повар/хостес) основатель добавляет сам внутри CRM.
+                          <span className="font-bold text-slate-400 font-mono tracking-widest flex items-center gap-1.5 uppercase text-[9px] mb-1"><Lightbulb className="w-3 h-3 text-amber-400" /> Независимый ресторан:</span>
+                          Регистрация создаёт только аккаунт основателя и его первый ресторан — изолированное заведение со своим свежим api_key. Сотрудников (менеджер/шеф-повар/хостес) основатель добавляет сам внутри CRM.
                         </div>
                       </form>
                     )}
@@ -1998,7 +1693,7 @@ CREATE TABLE orders (
                             ))}
                           </select>
                         )}
-                        <span className="text-slate-500">TENANT ID:</span>
+                        <span className="text-slate-500">ID РЕСТОРАНА:</span>
                         <span className="font-bold text-emerald-400 bg-[#050508] px-2.5 py-1 rounded-lg border border-zinc-900">{crmUser?.restaurant_id}</span>
                         <button
                           onClick={handleCrmLogout}
@@ -2013,24 +1708,24 @@ CREATE TABLE orders (
                     <div className="flex flex-wrap gap-2 bg-zinc-950 p-2.5 rounded-2xl border border-zinc-900 shadow-inner">
                       {crmUser?.role === "super_admin" && (
                         <button type="button" onClick={() => setCrmActiveTab("restaurants")}
-                          className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "restaurants" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                          🏢 Рестораны
+                          className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "restaurants" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                          <Building2 className="w-3.5 h-3.5" /> Рестораны
                         </button>
                       )}
 
-                      {(crmUser?.role === "founder" || crmUser?.role === "manager" || crmUser?.role === "super_admin") && (
+                      {(crmUser?.role === "founder" || crmUser?.role === "manager") && (
                         <>
                           <button type="button" onClick={() => setCrmActiveTab("analytics")}
-                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "analytics" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                            📈 Финансы
+                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "analytics" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                            <TrendingUp className="w-3.5 h-3.5" /> Финансы
                           </button>
                           <button type="button" onClick={() => setCrmActiveTab("employees")}
-                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "employees" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                            👥 Сотрудники
+                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "employees" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                            <Users className="w-3.5 h-3.5" /> Сотрудники
                           </button>
                           <button type="button" onClick={() => setCrmActiveTab("menu")}
-                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "menu" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                            ⚙️ Меню
+                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "menu" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                            <UtensilsCrossed className="w-3.5 h-3.5" /> Меню
                           </button>
                         </>
                       )}
@@ -2038,27 +1733,27 @@ CREATE TABLE orders (
                       {(crmUser?.role === "founder" || crmUser?.role === "manager" || crmUser?.role === "super_admin" || crmUser?.role === "hostess") && (
                         <>
                           <button type="button" onClick={() => setCrmActiveTab("reservations")}
-                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "reservations" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                            📅 Брони
+                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "reservations" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                            <CalendarDays className="w-3.5 h-3.5" /> Брони
                           </button>
                           <button type="button" onClick={() => setCrmActiveTab("tables")}
-                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "tables" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                            🪑 Карта столов
+                            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "tables" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                            <Armchair className="w-3.5 h-3.5" /> Карта столов
                           </button>
                         </>
                       )}
 
                       {(crmUser?.role === "founder" || crmUser?.role === "manager" || crmUser?.role === "super_admin" || crmUser?.role === "chef") && (
                         <button type="button" onClick={() => setCrmActiveTab("orders")}
-                          className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "orders" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                          🍳 Кухня
+                          className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "orders" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                          <ChefHat className="w-3.5 h-3.5" /> Кухня
                         </button>
                       )}
 
                       {crmUser?.role === "founder" && (
                         <button type="button" onClick={() => setCrmActiveTab("my-restaurants")}
-                          className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border ${crmActiveTab === "my-restaurants" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
-                          🏪 Мои рестораны
+                          className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${crmActiveTab === "my-restaurants" ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}>
+                          <Store className="w-3.5 h-3.5" /> Мои рестораны
                         </button>
                       )}
                     </div>
@@ -2066,7 +1761,7 @@ CREATE TABLE orders (
                     {/* TAB A: ANALYTICS (Founder / Manager / Super Admin Only) */}
                     {crmActiveTab === "analytics" && (
                       <div className="space-y-6">
-                        {(crmUser?.role !== "founder" && crmUser?.role !== "manager" && crmUser?.role !== "super_admin") ? (
+                        {(crmUser?.role !== "founder" && crmUser?.role !== "manager") ? (
                           <div className="bg-zinc-950 p-8 rounded-2xl border border-red-500/20 text-center space-y-4">
                             <AlertOctagon className="w-12 h-12 text-red-500 mx-auto animate-pulse" />
                             <h3 className="text-base font-bold font-mono text-red-400 uppercase">ОШИБКА 403: ДОСТУП ОГРАНИЧЕН</h3>
@@ -2136,7 +1831,9 @@ CREATE TABLE orders (
                                           <td className="p-3 font-bold text-emerald-400">#TXN_{o.id.toUpperCase().slice(-6)}</td>
                                           <td className="p-3 text-slate-350">#{o.id.toUpperCase().split("_")[1] || o.id}</td>
                                           <td className="p-3 text-slate-400" title={o.delivery_type === "delivery" ? o.delivery_address : undefined}>
-                                            {o.delivery_type === "in_restaurant" ? "В ЗАВЕДЕНИИ" : o.delivery_type === "delivery" ? "🚚 ДОСТАВКА" : "С СОБОЙ"}
+                                            {o.delivery_type === "in_restaurant" ? "В ЗАВЕДЕНИИ" : o.delivery_type === "delivery" ? (
+                                              <span className="flex items-center gap-1"><Truck className="w-3 h-3 text-amber-400" /> ДОСТАВКА</span>
+                                            ) : "С СОБОЙ"}
                                           </td>
                                           <td className="p-3 text-right text-emerald-300 font-bold">{o.total_amount} ₸</td>
                                           <td className="p-3 text-center">
@@ -2157,7 +1854,7 @@ CREATE TABLE orders (
                     {/* TAB B: EMPLOYEE STAFF DIRECTORY (Founder / Manager Only) */}
                     {crmActiveTab === "employees" && (
                       <div className="space-y-6">
-                        {(crmUser?.role !== "founder" && crmUser?.role !== "manager" && crmUser?.role !== "super_admin") ? (
+                        {(crmUser?.role !== "founder" && crmUser?.role !== "manager") ? (
                           <div className="bg-zinc-950 p-8 rounded-2xl border border-red-500/20 text-center space-y-4">
                             <AlertOctagon className="w-12 h-12 text-red-500 mx-auto animate-pulse" />
                             <h3 className="text-base font-bold font-mono text-red-400 uppercase">ОШИБКА 403: ДОСТУП ОГРАНИЧЕН</h3>
@@ -2230,6 +1927,7 @@ CREATE TABLE orders (
                                       <th className="p-3">E-mail адрес</th>
                                       <th className="p-3">ID сотрудника</th>
                                       <th className="p-3 text-right">Должность / Роль</th>
+                                      <th className="p-3 text-right">Действия</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -2250,6 +1948,37 @@ CREATE TABLE orders (
                                             {emp.role}
                                           </span>
                                         </td>
+                                        <td className="p-3 text-right">
+                                          <div className="flex items-center justify-end gap-1.5">
+                                            {emp.id !== crmUser?.id && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleResetEmployeePassword(emp.id, emp.email)}
+                                                disabled={resettingPasswordId === emp.id}
+                                                title="Сгенерировать новый пароль сотруднику, если он его забыл"
+                                                className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold font-mono bg-indigo-950/20 hover:bg-indigo-950/40 border border-indigo-900/30 px-2 py-1 rounded cursor-pointer transition-all flex items-center gap-1 disabled:opacity-50 whitespace-nowrap"
+                                              >
+                                                <KeyRound className={`w-3 h-3 ${resettingPasswordId === emp.id ? "animate-pulse" : ""}`} /> Новый пароль
+                                              </button>
+                                            )}
+                                            {emp.role !== "founder" && emp.id !== crmUser?.id && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  askConfirm(
+                                                    "Удалить сотрудника?",
+                                                    `Сотрудник "${emp.email}" будет немедленно удалён из штата без возможности восстановления.`,
+                                                    () => handleDeleteEmployee(emp.id)
+                                                  )
+                                                }
+                                                title="Удалить сотрудника"
+                                                className="text-red-500 hover:text-red-400 text-[10px] font-bold font-mono bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 px-2 py-1 rounded cursor-pointer transition-all"
+                                              >
+                                                Удалить
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -2265,7 +1994,7 @@ CREATE TABLE orders (
                     {/* TAB C: MENU CONFIGURATION MODIFIER (Founder / Manager Only) */}
                     {crmActiveTab === "menu" && (
                       <div className="space-y-6">
-                        {(crmUser?.role !== "founder" && crmUser?.role !== "manager" && crmUser?.role !== "super_admin") ? (
+                        {(crmUser?.role !== "founder" && crmUser?.role !== "manager") ? (
                           <div className="bg-zinc-950 p-8 rounded-2xl border border-red-500/20 text-center space-y-4">
                             <AlertOctagon className="w-12 h-12 text-red-500 mx-auto animate-pulse" />
                             <h3 className="text-base font-bold font-mono text-red-400 uppercase">ОШИБКА 403: ДОСТУП ОГРАНИЧЕН</h3>
@@ -2276,41 +2005,248 @@ CREATE TABLE orders (
                           </div>
                         ) : (
                           <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl space-y-4">
-                            <div>
-                              <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Корпоративное Меню ресторанов</h3>
-                              <p className="text-[11px] text-slate-500 font-sans mt-1">
-                                Переопределяйте стоимость блюд в реальном времени. Обновленные цены мгновенно синхронизируются на клиентском сайте заведения!
-                              </p>
+                            <div className="flex items-center justify-between border-b border-zinc-900 pb-3 flex-wrap gap-2">
+                              <div>
+                                <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Меню ресторана</h3>
+                                <p className="text-[11px] text-slate-500 font-sans mt-1">
+                                  Блюда хранятся в базе данных (GET/POST/PATCH/DELETE /crm/menu). Изменения цены и доступности сразу видны клиентам в портале бронирования/заказа.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => fetchCrmMenu()}
+                                disabled={menuLoading}
+                                className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-zinc-800 flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${menuLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ
+                              </button>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {tenants.find((t) => t.id === crmUser?.restaurant_id)?.menu.map((dish) => (
-                                <div key={dish.name} className="bg-[#050508] border border-zinc-900 rounded-xl p-4 flex justify-between items-center gap-4">
-                                  <div>
-                                    <span className="text-xs font-bold text-slate-200 block font-sans">{dish.name}</span>
-                                    <span className="text-[10px] font-mono text-indigo-450 block mt-0.5">Текущая цена: {dish.price} ₸</span>
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => handleUpdateMenuPrice(dish.name, Math.max(500, dish.price - 500))}
-                                      className="w-8 h-8 rounded bg-zinc-900 hover:bg-zinc-800 text-slate-100 font-bold border border-zinc-800 flex items-center justify-center text-xs active:scale-95 transition-all cursor-pointer"
-                                    >
-                                      -
-                                    </button>
-                                    <span className="text-xs font-mono font-bold text-white w-20 text-center bg-zinc-950 py-1 border border-zinc-900 rounded font-bold">
-                                      {dish.price} ₸
-                                    </span>
-                                    <button
-                                      onClick={() => handleUpdateMenuPrice(dish.name, dish.price + 500)}
-                                      className="w-8 h-8 rounded bg-zinc-900 hover:bg-zinc-800 text-slate-100 font-bold border border-zinc-800 flex items-center justify-center text-xs active:scale-95 transition-all cursor-pointer"
-                                    >
-                                      +
-                                    </button>
-                                  </div>
+                            <form onSubmit={handleAddMenuItem} className="space-y-2.5 bg-[#050508] border border-zinc-900 rounded-xl p-3">
+                              <div className="flex flex-wrap items-end gap-2">
+                                <div className="flex-1 min-w-[140px]">
+                                  <label className="text-[10px] text-slate-500 font-mono uppercase block mb-1">Название блюда</label>
+                                  <input
+                                    type="text"
+                                    value={newMenuItemForm.name}
+                                    onChange={(e) => setNewMenuItemForm((prev) => ({ ...prev, name: e.target.value }))}
+                                    placeholder="Например, Плов"
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-sans focus:outline-none focus:border-indigo-500"
+                                  />
                                 </div>
-                              ))}
-                            </div>
+                                <div className="w-28">
+                                  <label className="text-[10px] text-slate-500 font-mono uppercase block mb-1">Цена, ₸</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={newMenuItemForm.price}
+                                    onChange={(e) => setNewMenuItemForm((prev) => ({ ...prev, price: e.target.value }))}
+                                    placeholder="2500"
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                                  />
+                                </div>
+                                <div className="w-36">
+                                  <label className="text-[10px] text-slate-500 font-mono uppercase block mb-1">Категория</label>
+                                  <input
+                                    type="text"
+                                    value={newMenuItemForm.category}
+                                    onChange={(e) => setNewMenuItemForm((prev) => ({ ...prev, category: e.target.value }))}
+                                    placeholder="Горячее (опц.)"
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-sans focus:outline-none focus:border-indigo-500"
+                                  />
+                                </div>
+                                <div className="w-auto">
+                                  <label className="text-[10px] text-slate-500 font-mono uppercase block mb-1">Фото</label>
+                                  <label className="w-20 h-9 flex items-center justify-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-[10px] font-mono text-slate-400 hover:border-indigo-500 hover:text-indigo-300 cursor-pointer transition-all overflow-hidden">
+                                    {newMenuItemForm.image_url ? (
+                                      <img src={newMenuItemForm.image_url} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                      <>
+                                        <ImagePlus className="w-3.5 h-3.5" /> Файл
+                                      </>
+                                    )}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        try {
+                                          const dataUrl = await fileToDataUrl(file);
+                                          setNewMenuItemForm((prev) => ({ ...prev, image_url: dataUrl }));
+                                        } catch (err) {
+                                          showToast(err instanceof Error ? err.message : "Ошибка загрузки фото", "error");
+                                        }
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-end gap-2">
+                                <div className="flex-1 min-w-[200px]">
+                                  <label className="text-[10px] text-slate-500 font-mono uppercase block mb-1">Описание (2-3 строки)</label>
+                                  <textarea
+                                    value={newMenuItemForm.description}
+                                    onChange={(e) => setNewMenuItemForm((prev) => ({ ...prev, description: e.target.value }))}
+                                    placeholder="Короткое аппетитное описание блюда для гостя"
+                                    rows={1}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-sans focus:outline-none focus:border-indigo-500 resize-none"
+                                  />
+                                </div>
+                                <div className="w-32">
+                                  <label className="text-[10px] text-slate-500 font-mono uppercase block mb-1">Бейдж</label>
+                                  <input
+                                    type="text"
+                                    value={newMenuItemForm.badge_label}
+                                    onChange={(e) => setNewMenuItemForm((prev) => ({ ...prev, badge_label: e.target.value }))}
+                                    placeholder="Хит, Веган..."
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-sans focus:outline-none focus:border-indigo-500"
+                                  />
+                                </div>
+                                <div className="w-32">
+                                  <label className="text-[10px] text-slate-500 font-mono uppercase block mb-1">Цвет бейджа</label>
+                                  <select
+                                    value={newMenuItemForm.badge_color}
+                                    onChange={(e) => setNewMenuItemForm((prev) => ({ ...prev, badge_color: e.target.value as typeof prev.badge_color }))}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-sans focus:outline-none focus:border-indigo-500"
+                                  >
+                                    <option value="">Без бейджа</option>
+                                    <option value="emerald">🟢 Веган</option>
+                                    <option value="amber">⭐ Хит</option>
+                                    <option value="red">🔥 Острое</option>
+                                    <option value="indigo">✨ Новинка</option>
+                                    <option value="purple">🏆 Премиум</option>
+                                  </select>
+                                </div>
+                                <button
+                                  type="submit"
+                                  disabled={menuLoading}
+                                  className="bg-indigo-500 hover:bg-indigo-400 text-slate-950 px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-60 h-9"
+                                >
+                                  <PlusCircle className="w-3.5 h-3.5" /> Добавить блюдо
+                                </button>
+                              </div>
+                            </form>
+
+                            {crmMenu.length === 0 ? (
+                              <div className="py-12 text-center text-slate-500 font-mono text-xs uppercase">
+                                Меню пока пусто. Добавьте первое блюдо через форму выше.
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {crmMenu.map((dish) => {
+                                  const badge = dish.badge_color ? BADGE_STYLES[dish.badge_color] : null;
+                                  return (
+                                    <div key={dish.id} className={`bg-[#050508] border border-zinc-900 rounded-2xl overflow-hidden flex flex-col ${dish.is_available ? "" : "opacity-50"}`}>
+                                      {/* Full-bleed photo with badge ribbon, как на референсном фото */}
+                                      <label
+                                        title="Загрузить/заменить фото блюда"
+                                        className="relative h-36 block bg-zinc-900 cursor-pointer group shrink-0"
+                                      >
+                                        {dish.image_url ? (
+                                          <img src={dish.image_url} alt={dish.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center">
+                                            <ImageOff className="w-6 h-6 text-slate-700" />
+                                          </div>
+                                        )}
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all">
+                                          <ImagePlus className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-all" />
+                                        </div>
+                                        {badge && (
+                                          <span className={`absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wide shadow-lg ${badge.classes}`}>
+                                            <badge.Icon className="w-3 h-3" /> {dish.badge_label}
+                                          </span>
+                                        )}
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={async (e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            try {
+                                              const dataUrl = await fileToDataUrl(file);
+                                              handleUpdateMenuImage(dish.id, dataUrl);
+                                            } catch (err) {
+                                              showToast(err instanceof Error ? err.message : "Ошибка загрузки фото", "error");
+                                            }
+                                            e.target.value = "";
+                                          }}
+                                        />
+                                      </label>
+
+                                      <div className="p-3.5 flex flex-col gap-2 flex-1">
+                                        {dish.category && (
+                                          <span className="self-start text-[9px] font-mono font-bold uppercase tracking-wider text-indigo-400 bg-indigo-950/40 border border-indigo-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                            <Tag className="w-2.5 h-2.5" /> {dish.category}
+                                          </span>
+                                        )}
+                                        <h4 className="text-sm font-bold text-slate-100 font-sans leading-snug">{dish.name}</h4>
+                                        {dish.description && (
+                                          <p
+                                            className="text-[11px] text-slate-500 font-sans leading-relaxed"
+                                            style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                                          >
+                                            {dish.description}
+                                          </p>
+                                        )}
+
+                                        <div className="mt-auto pt-2 flex items-center justify-between gap-2 border-t border-zinc-900">
+                                          <div>
+                                            <span className="text-[8px] text-slate-600 font-mono uppercase tracking-widest block">Стоимость</span>
+                                            <span className="text-sm font-mono font-bold text-amber-400">{dish.price} ₸</span>
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdateMenuPrice(dish.id, Math.max(0, dish.price - 500))}
+                                              title="Цена -500 ₸"
+                                              className="w-6 h-6 rounded bg-zinc-900 hover:bg-zinc-800 text-slate-100 border border-zinc-800 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                                            >
+                                              <Minus className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdateMenuPrice(dish.id, dish.price + 500)}
+                                              title="Цена +500 ₸"
+                                              className="w-6 h-6 rounded bg-zinc-900 hover:bg-zinc-800 text-slate-100 border border-zinc-800 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                                            >
+                                              <Plus className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleToggleMenuAvailability(dish.id, !dish.is_available)}
+                                              title={dish.is_available ? "Скрыть из меню" : "Вернуть в меню"}
+                                              className="w-6 h-6 rounded bg-zinc-900 hover:bg-zinc-800 text-slate-100 border border-zinc-800 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                                            >
+                                              {dish.is_available ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <AlertOctagon className="w-3.5 h-3.5 text-slate-500" />}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                askConfirm(
+                                                  "Удалить блюдо?",
+                                                  `Блюдо "${dish.name}" будет немедленно убрано из меню и недоступно клиентам.`,
+                                                  () => handleDeleteMenuItem(dish.id)
+                                                )
+                                              }
+                                              title="Удалить блюдо"
+                                              className="w-6 h-6 rounded bg-zinc-900 hover:bg-red-950 text-red-400 border border-zinc-800 hover:border-red-900 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -2330,15 +2266,16 @@ CREATE TABLE orders (
 
                           <button
                             onClick={() => fetchCrmReservations()}
-                            className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-zinc-800 flex items-center gap-1 cursor-pointer"
+                            disabled={reservationsLoading}
+                            className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-zinc-800 flex items-center gap-1 cursor-pointer disabled:opacity-60"
                           >
-                            <RefreshCw className="w-3 h-3" /> ОБНОВИТЬ СПИСОК
+                            <RefreshCw className={`w-3 h-3 ${reservationsLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ СПИСОК
                           </button>
                         </div>
 
                         {crmReservations.length === 0 ? (
                           <div className="py-12 text-center text-slate-500 font-mono text-xs uppercase">
-                            Бронирований ресторана на сегодня нет. Перейдите во вкладку "Симулятор Клиента", выберите столик и зарегистрируйте бронь!
+                            Бронирований ресторана на сегодня нет. Поделитесь ссылкой на клиентский портал (вкладка "Мои рестораны") — гость выберет столик и оформит бронь сам!
                           </div>
                         ) : (
                           <div className="overflow-x-auto rounded-xl border border-zinc-900 text-xs font-sans">
@@ -2419,7 +2356,7 @@ CREATE TABLE orders (
                           <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl space-y-4 h-fit">
                             <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
                               <Plus className="w-4 h-4 text-indigo-400" />
-                              Добавить стол на карту
+                              Добавить стол
                             </h3>
                             <form onSubmit={handleAddTable} className="space-y-3 font-mono text-xs">
                               <div className="grid grid-cols-2 gap-3">
@@ -2437,20 +2374,6 @@ CREATE TABLE orders (
                                     className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-lg p-2.5 outline-none text-xs" />
                                 </div>
                               </div>
-                              <div>
-                                <label className="block text-slate-500 mb-1.5 font-bold uppercase">Позиция на карте (X%, Y%)</label>
-                                <div className="grid grid-cols-2 gap-3">
-                                  <input type="number" min="5" max="90" value={tableForm.x_pos}
-                                    onChange={(e) => setTableForm({ ...tableForm, x_pos: e.target.value })}
-                                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-lg p-2.5 outline-none text-xs"
-                                    placeholder="X%" />
-                                  <input type="number" min="5" max="90" value={tableForm.y_pos}
-                                    onChange={(e) => setTableForm({ ...tableForm, y_pos: e.target.value })}
-                                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-indigo-400 rounded-lg p-2.5 outline-none text-xs"
-                                    placeholder="Y%" />
-                                </div>
-                                <p className="text-[10px] text-slate-600 mt-1 font-sans">0-100% — левый край/верх. Центр карты = 50/50.</p>
-                              </div>
                               <button type="submit" disabled={loading}
                                 className="w-full bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer uppercase disabled:opacity-50 flex items-center justify-center gap-1.5">
                                 <Plus className="w-3.5 h-3.5 stroke-[3px]" />
@@ -2466,8 +2389,9 @@ CREATE TABLE orders (
                                 Столы ресторана ({crmTables.length})
                               </h3>
                               <button onClick={() => fetchCrmTables()}
-                                className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold border border-zinc-800 flex items-center gap-1 cursor-pointer">
-                                <RefreshCw className="w-3 h-3" /> Обновить
+                                disabled={tablesLoading}
+                                className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold border border-zinc-800 flex items-center gap-1 cursor-pointer disabled:opacity-60">
+                                <RefreshCw className={`w-3 h-3 ${tablesLoading ? "animate-spin" : ""}`} /> Обновить
                               </button>
                             </div>
 
@@ -2482,7 +2406,6 @@ CREATE TABLE orders (
                                     <tr className="border-b border-zinc-900 text-slate-400 font-bold bg-[#050508]">
                                       <th className="p-3">№</th>
                                       <th className="p-3">Мест</th>
-                                      <th className="p-3">X / Y</th>
                                       <th className="p-3 text-center">Статус</th>
                                       {(crmUser?.role === "founder" || crmUser?.role === "manager") && <th className="p-3 text-right">Действия</th>}
                                     </tr>
@@ -2492,19 +2415,18 @@ CREATE TABLE orders (
                                       <tr key={tbl.id} className="border-b border-zinc-900/60 hover:bg-zinc-900/20 transition-colors">
                                         <td className="p-3 font-bold text-white">Стол №{tbl.table_number}</td>
                                         <td className="p-3 text-slate-400">{tbl.capacity} чел.</td>
-                                        <td className="p-3 text-slate-500">{tbl.x_pos}% / {tbl.y_pos}%</td>
                                         <td className="p-3 text-center">
                                           <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${
                                             tbl.current_status === "free" ? "bg-emerald-950 text-emerald-400 border-emerald-500/20"
                                             : tbl.current_status === "reserved" ? "bg-amber-950 text-amber-400 border-amber-500/20"
-                                            : "bg-pink-950 text-pink-400 border-pink-500/20"
+                                            : "bg-red-950 text-red-400 border-red-500/20"
                                           }`}>
                                             {tbl.current_status === "free" ? "Свободен" : tbl.current_status === "reserved" ? "Забронирован" : "Занят"}
                                           </span>
                                         </td>
                                         {(crmUser?.role === "founder" || crmUser?.role === "manager") && (
                                           <td className="p-3 text-right">
-                                            <button onClick={() => handleDeleteTable(tbl.id)}
+                                            <button onClick={() => handleDeleteTable(tbl.id, tbl.table_number)}
                                               className="text-red-500 hover:text-red-400 text-[10px] font-bold font-mono bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 px-2 py-1 rounded cursor-pointer transition-all">
                                               Удалить
                                             </button>
@@ -2543,6 +2465,32 @@ CREATE TABLE orders (
                             <h3 className="text-base font-bold font-mono text-red-400 uppercase">Только для основателя</h3>
                           </div>
                         ) : (
+                          <div className="space-y-6">
+                            {/* Один портал на все заведения основателя — гость выбирает нужное заведение внутри портала */}
+                            <div className="flex items-center justify-between gap-3 bg-zinc-950 border border-amber-500/20 rounded-2xl p-4">
+                              <div className="min-w-0">
+                                <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">Клиентский портал</h3>
+                                <p className="text-[10px] text-slate-500 font-mono mt-1">
+                                  Единая ссылка для всех ваших заведений — гость выбирает нужное заведение внутри портала.
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const active =
+                                    founderRestaurants.find((r) => r.id === crmUser?.restaurant_id && !r.archived_at) ||
+                                    founderRestaurants.find((r) => !r.archived_at);
+                                  if (!active) {
+                                    showToast("Нет доступных заведений — все архивированы.", "error");
+                                    return;
+                                  }
+                                  window.open(`/portal/${active.api_key}`, "_blank");
+                                }}
+                                className="shrink-0 text-xs font-bold font-mono bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2.5 rounded-xl cursor-pointer transition-all whitespace-nowrap active:scale-[0.98] flex items-center gap-1.5"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" /> Открыть портал
+                              </button>
+                            </div>
+
                           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Add restaurant form */}
                             <div className="bg-zinc-950 border border-zinc-900 p-5 rounded-2xl space-y-4 h-fit">
@@ -2567,10 +2515,10 @@ CREATE TABLE orders (
                                   disabled={loading}
                                   className="w-full bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-display font-extrabold py-2.5 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 text-xs cursor-pointer uppercase tracking-wide"
                                 >
-                                  + Создать новый tenant
+                                  + Создать новый ресторан
                                 </button>
                                 <div className="bg-[#050508] rounded-xl p-3 text-[10px] leading-relaxed border border-zinc-900 text-slate-500 font-sans">
-                                  Каждый новый ресторан — отдельный tenant со своим свежим api_key, изолированный от остальных ваших заведений.
+                                  Каждый новый ресторан — отдельное изолированное заведение со своим свежим api_key, не пересекающееся с остальными вашими ресторанами.
                                 </div>
                               </form>
                             </div>
@@ -2583,33 +2531,47 @@ CREATE TABLE orders (
                               ) : (
                                 <div className="space-y-2">
                                   {founderRestaurants.map((r) => (
-                                    <div key={r.id} className={`flex items-center justify-between p-3 rounded-xl border ${r.archived_at ? "border-zinc-900 bg-zinc-900/30 opacity-50" : "border-zinc-900 bg-[#050508]"}`}>
-                                      <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <p className="text-xs font-bold text-white truncate">{r.name}</p>
-                                          {r.id === crmUser?.restaurant_id && (
-                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/20 uppercase">Активен</span>
+                                    <div key={r.id} className={`p-3 rounded-xl border space-y-2.5 ${r.archived_at ? "border-zinc-900 bg-zinc-900/30 opacity-50" : "border-zinc-900 bg-[#050508]"}`}>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <p className="text-xs font-bold text-white truncate">{r.name}</p>
+                                            {r.id === crmUser?.restaurant_id && (
+                                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/20 uppercase">Активен</span>
+                                            )}
+                                            {r.archived_at && (
+                                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-500/20 uppercase">Архивирован</span>
+                                            )}
+                                          </div>
+                                          <p className="text-[10px] font-mono text-slate-600 truncate mt-0.5">{r.api_key}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          {!r.archived_at && r.id !== crmUser?.restaurant_id && (
+                                            <button onClick={() => handleSwitchRestaurant(r.id)}
+                                              className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold font-mono bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-500/20 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all">
+                                              Переключиться
+                                            </button>
                                           )}
-                                          {r.archived_at && (
-                                            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-500/20 uppercase">Архивирован</span>
+                                          {!r.archived_at && (
+                                            <button onClick={() => handleArchiveFounderRestaurant(r.id)}
+                                              className="text-red-500 hover:text-red-400 text-[10px] font-bold font-mono bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all">
+                                              Архивировать
+                                            </button>
                                           )}
                                         </div>
-                                        <p className="text-[10px] font-mono text-slate-500 truncate">{r.api_key}</p>
                                       </div>
-                                      <div className="flex items-center gap-2 shrink-0 ml-3">
-                                        {!r.archived_at && r.id !== crmUser?.restaurant_id && (
-                                          <button onClick={() => handleSwitchRestaurant(r.id)}
-                                            className="text-indigo-400 hover:text-indigo-300 text-[10px] font-bold font-mono bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-500/20 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all">
-                                            Переключиться
+                                      {/* Ссылка на клиентский портал этого ресторана */}
+                                      {!r.archived_at && r.api_key && (
+                                        <div className="flex items-center gap-2 pt-1 border-t border-zinc-900">
+                                          <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider shrink-0">Портал:</span>
+                                          <code className="text-[9px] text-amber-500/70 font-mono truncate flex-1">/portal/{r.api_key}</code>
+                                          <button
+                                            onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/portal/${r.api_key}`); showToast('Ссылка скопирована!', 'success'); }}
+                                            className="text-[9px] font-bold font-mono bg-zinc-900 hover:bg-zinc-800 text-slate-400 border border-zinc-800 px-2 py-1 rounded-lg cursor-pointer transition-all shrink-0 flex items-center gap-1">
+                                            <Copy className="w-2.5 h-2.5" /> Копировать
                                           </button>
-                                        )}
-                                        {!r.archived_at && (
-                                          <button onClick={() => handleArchiveFounderRestaurant(r.id)}
-                                            className="text-red-500 hover:text-red-400 text-[10px] font-bold font-mono bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all">
-                                            Архивировать
-                                          </button>
-                                        )}
-                                      </div>
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -2618,6 +2580,7 @@ CREATE TABLE orders (
                                 Архивация запрещена при наличии незавершённых заказов или будущих бронирований в этом ресторане.
                               </div>
                             </div>
+                          </div>
                           </div>
                         )}
                       </div>
@@ -2691,10 +2654,10 @@ CREATE TABLE orders (
                                         <span className="text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded uppercase shrink-0">ACTIVE</span>
                                       </div>
                                       <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
-                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">🔑 {r.api_key}</span>
-                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">👥 {staff.length} сотрудников</span>
-                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">🪑 {tables.length} столов</span>
-                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">📋 {orders.length} заказов</span>
+                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 flex items-center gap-1"><KeyRound className="w-2.5 h-2.5" /> {r.api_key}</span>
+                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 flex items-center gap-1"><Users className="w-2.5 h-2.5" /> {staff.length} сотрудников</span>
+                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 flex items-center gap-1"><Armchair className="w-2.5 h-2.5" /> {tables.length} столов</span>
+                                        <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 flex items-center gap-1"><ClipboardList className="w-2.5 h-2.5" /> {orders.length} заказов</span>
                                       </div>
                                     </div>
                                   );
@@ -2717,9 +2680,10 @@ CREATE TABLE orders (
 
                           <button
                             onClick={() => fetchCrmOrders()}
-                            className="bg-zinc-900 hover:bg-zinc-800 text-slate-100 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border border-zinc-800 flex items-center gap-1.5 cursor-pointer"
+                            disabled={ordersLoading}
+                            className="bg-zinc-900 hover:bg-zinc-800 text-slate-100 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border border-zinc-800 flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
                           >
-                            <RefreshCw className="w-3.5 h-3.5" /> ОБНОВИТЬ ОЧЕРЕДЬ
+                            <RefreshCw className={`w-3.5 h-3.5 ${ordersLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ ОЧЕРЕДЬ
                           </button>
                         </div>
 
@@ -2758,9 +2722,10 @@ CREATE TABLE orders (
                   <div className="flex gap-2">
                     <button
                       onClick={fetchLogs}
-                      className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-zinc-850 flex items-center gap-1.5 cursor-pointer"
+                      disabled={logsLoading}
+                      className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-zinc-850 flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" /> ОБНОВИТЬ
+                      <RefreshCw className={`w-3.5 h-3.5 ${logsLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ
                     </button>
                     <button
                       onClick={clearLogs}
@@ -2776,7 +2741,7 @@ CREATE TABLE orders (
                     <Lock className="w-10 h-10 mx-auto text-zinc-800 mb-2" />
                     <span className="text-red-400">Инспектор логов доступен только Super Admin</span>
                     <p className="text-[10px] text-slate-600 shrink-0 font-sans max-w-sm mx-auto mt-1 leading-relaxed normal-case">
-                      Авторизуйтесь в CRM под ролью Super Admin, чтобы видеть сквозной аудит запросов всех тенантов.
+                      Авторизуйтесь в CRM под ролью Super Admin, чтобы видеть сквозной аудит запросов всех ресторанов.
                     </p>
                   </div>
                 ) : systemLogs.length === 0 ? (

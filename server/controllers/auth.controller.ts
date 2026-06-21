@@ -45,7 +45,7 @@ export function login(req: SecureRequest, res: Response) {
       return;
     }
     if (restaurant.archived_at) {
-      res.status(403).json({ error: "Этот ресторан архивирован. Обратитесь к основателю организации." });
+      res.status(403).json({ error: "Этот ресторан архивирован. Обратитесь к основателю ресторана." });
       return;
     }
     restaurantName = restaurant.name;
@@ -138,7 +138,7 @@ export function register(req: SecureRequest, res: Response) {
   );
 
   res.status(201).json({
-    message: `Организация «${restaurant.name}» зарегистрирована как новый независимый tenant. Добро пожаловать.`,
+    message: `Ресторан «${restaurant.name}» зарегистрирован как новое независимое заведение. Добро пожаловать.`,
     token,
     user: {
       id: founder.id,
@@ -179,7 +179,7 @@ export function switchRestaurant(req: SecureRequest, res: Response) {
   }
 
   if (req.user.role === "founder" && restaurant.founder_id !== req.user.id) {
-    res.status(403).json({ error: "Этот ресторан не принадлежит вашей организации." });
+    res.status(403).json({ error: "Этот ресторан не принадлежит вам." });
     return;
   }
 

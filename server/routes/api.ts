@@ -14,7 +14,7 @@ import {
 } from "../controllers/order.controller";
 import { clientTenantAuth, crmTenantAuth, requireRole, SecureRequest } from "../middlewares/tenant";
 import { asyncHandler } from "../utils/asyncHandler";
-import { hashPassword } from "../utils/password";
+import { generateRandomPassword, hashPassword } from "../utils/password";
 import { db } from "../db";
 import type { Role } from "../db";
 
@@ -48,7 +48,17 @@ router.get(
       return;
     }
     const menu = db.menuItems.findByRestaurant(req.restaurant_id!).filter((m) => m.is_available);
-    res.json({ id: restaurant.id, name: restaurant.name, menu });
+
+    // Если у основателя несколько заведений (сеть), отдаём список всех его активных
+    // ресторанов — портал показывает переключатель локаций, чтобы гость не перепутал
+    // заведение, в которое бронирует столик или заказывает блюда.
+    const locations = restaurant.founder_id
+      ? db.restaurants
+          .findByFounder(restaurant.founder_id)
+          .map((r) => ({ id: r.id, name: r.name, api_key: r.api_key }))
+      : [{ id: restaurant.id, name: restaurant.name, api_key: restaurant.api_key }];
+
+    res.json({ id: restaurant.id, name: restaurant.name, menu, restaurants: locations });
   })
 );
 
@@ -70,6 +80,61 @@ router.get(
 );
 
 router.post("/client/reservations", clientTenantAuth, asyncHandler(clientCreateReservation));
+
+// Возвращает занятые временные слоты для конкретного стола на дату.
+// Клиент видит только ФАКТ занятости слота — никаких имён/телефонов других гостей (PII защита).
+router.get(
+  "/client/slots",
+  clientTenantAuth,
+  asyncHandler((req: SecureRequest, res) => {
+    const { date, table_id } = req.query as { date?: string; table_id?: string };
+    if (!date || !table_id) {
+      res.status(400).json({ error: "Параметры date и table_id обязательны." });
+      return;
+    }
+    // Проверяем что стол принадлежит этому ресторану
+    const table = db.tables.findByIdAndRestaurant(table_id, req.restaurant_id!);
+    if (!table) {
+      res.status(404).json({ error: "Стол не найден." });
+      return;
+    }
+
+    const SLOT_DURATION = 120; // минут — длительность одного бронирования
+    const DAY_START = 10 * 60;  // 10:00
+    const DAY_END   = 22 * 60;  // 22:00
+    const STEP      = 30;        // шаг слотов в минутах
+
+    // Активные брони на этот стол на выбранную дату
+    const reservationsOnDate = db.reservations
+      .findByTableAndDate(table_id, date)
+      .filter((r) => r.status !== "cancelled");
+
+    const bookedMinutes = reservationsOnDate.map((r) => {
+      const [h, m] = r.time.split(":").map(Number);
+      return h * 60 + m;
+    });
+
+    const slots: { time: string; available: boolean; reason?: string }[] = [];
+
+    for (let mins = DAY_START; mins <= DAY_END - STEP; mins += STEP) {
+      const h = String(Math.floor(mins / 60)).padStart(2, "0");
+      const m = String(mins % 60).padStart(2, "0");
+      const timeStr = `${h}:${m}`;
+
+      const conflict = bookedMinutes.find((bm) => Math.abs(bm - mins) < SLOT_DURATION);
+      if (conflict !== undefined) {
+        const ch = String(Math.floor(conflict / 60)).padStart(2, "0");
+        const cm = String(conflict % 60).padStart(2, "0");
+        slots.push({ time: timeStr, available: false, reason: `Занят (бронь в ${ch}:${cm})` });
+      } else {
+        slots.push({ time: timeStr, available: true });
+      }
+    }
+
+    res.json({ table_id, date, slots });
+  })
+);
+
 router.post("/client/orders", clientTenantAuth, asyncHandler(clientCreateOrder));
 router.post("/client/payments/webhook", asyncHandler(clientPaymentWebhook));
 
@@ -158,8 +223,62 @@ router.post(
     });
 
     res.status(201).json({
-      message: "Сотрудник зачислен в штат организации.",
+      message: "Сотрудник зачислен в штат ресторана.",
       user: { id: newUser.id, email: newUser.email, role: newUser.role },
+    });
+  })
+);
+
+router.delete(
+  "/crm/employees/:id",
+  crmTenantAuth,
+  requireRole(["founder", "manager"]),
+  asyncHandler((req: SecureRequest, res) => {
+    const { id } = req.params;
+
+    if (id === req.user!.id) {
+      res.status(400).json({ error: "Невозможно удалить самого себя из штата." });
+      return;
+    }
+
+    const target = db.users.findByIdAndRestaurant(id, req.restaurant_id!);
+    if (!target) {
+      res.status(404).json({ error: "Сотрудник не найден или принадлежит другому ресторану." });
+      return;
+    }
+    if (target.role === "founder") {
+      res.status(403).json({ error: "Аккаунт основателя ресторана нельзя удалить." });
+      return;
+    }
+
+    db.users.delete(id, req.restaurant_id!);
+    res.json({ message: `Сотрудник ${target.email} удалён из штата ресторана.` });
+  })
+);
+
+// Сброс пароля сотрудника, если он его забыл: новый пароль генерируется на сервере,
+// хэшируется и сохраняется, а гостю (founder/manager) он отдаётся открытым текстом
+// ровно один раз в ответе — повторно посмотреть его будет невозможно.
+router.post(
+  "/crm/employees/:id/reset-password",
+  crmTenantAuth,
+  requireRole(["founder", "manager"]),
+  asyncHandler((req: SecureRequest, res) => {
+    const { id } = req.params;
+
+    const target = db.users.findByIdAndRestaurant(id, req.restaurant_id!);
+    if (!target) {
+      res.status(404).json({ error: "Сотрудник не найден или принадлежит другому ресторану." });
+      return;
+    }
+
+    const newPassword = generateRandomPassword();
+    db.users.resetPassword(id, req.restaurant_id!, hashPassword(newPassword));
+
+    res.json({
+      message: `Новый пароль для ${target.email} сгенерирован.`,
+      email: target.email,
+      new_password: newPassword,
     });
   })
 );
@@ -253,7 +372,7 @@ router.post(
   crmTenantAuth,
   requireRole(["founder", "manager"]),
   asyncHandler((req: SecureRequest, res) => {
-    const { name, price, category, is_available } = req.body;
+    const { name, price, category, is_available, image_url, description, badge_label, badge_color } = req.body;
     if (!name || price === undefined) {
       res.status(400).json({ error: "name и price обязательны." });
       return;
@@ -264,6 +383,10 @@ router.post(
       price: Number(price),
       category,
       is_available: is_available !== undefined ? Boolean(is_available) : true,
+      image_url,
+      description,
+      badge_label,
+      badge_color,
     });
     res.status(201).json({ message: "Блюдо добавлено в меню.", item });
   })
@@ -275,12 +398,16 @@ router.patch(
   requireRole(["founder", "manager"]),
   asyncHandler((req: SecureRequest, res) => {
     const { id } = req.params;
-    const { name, price, category, is_available } = req.body;
+    const { name, price, category, is_available, image_url, description, badge_label, badge_color } = req.body;
     const updated = db.menuItems.update(id, req.restaurant_id!, {
       ...(name !== undefined ? { name } : {}),
       ...(price !== undefined ? { price: Number(price) } : {}),
       ...(category !== undefined ? { category } : {}),
       ...(is_available !== undefined ? { is_available: Boolean(is_available) } : {}),
+      ...(image_url !== undefined ? { image_url } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(badge_label !== undefined ? { badge_label } : {}),
+      ...(badge_color !== undefined ? { badge_color } : {}),
     });
     if (!updated) {
       res.status(404).json({ error: "Блюдо не найдено или принадлежит другому ресторану." });
@@ -381,7 +508,7 @@ router.post(
       founder_id: req.user!.id,
     });
     res.status(201).json({
-      message: `Ресторан «${name}» добавлен в вашу организацию. Переключитесь на него через /crm/founder/switch-restaurant.`,
+      message: `Ресторан «${name}» добавлен в ваш список ресторанов. Переключитесь на него через /crm/founder/switch-restaurant.`,
       restaurant: newRestaurant,
     });
   })
@@ -395,7 +522,7 @@ router.delete(
     const { id } = req.params;
     const restaurant = db.restaurants.findById(id);
     if (!restaurant || (req.user!.role !== "super_admin" && restaurant.founder_id !== req.user!.id)) {
-      res.status(404).json({ error: "Ресторан не найден или не принадлежит вашей организации." });
+      res.status(404).json({ error: "Ресторан не найден или не принадлежит вам." });
       return;
     }
     if (db.orders.hasActiveByRestaurant(id)) {

@@ -282,6 +282,13 @@ export function crmUpdateOrderStatus(req: SecureRequest, res: Response) {
     return;
   }
 
+  // Бизнес-правило: заказ "в заведении" занимает стол (см. clientCreateOrder → setStatus 'occupied').
+  // Когда блюда поданы (delivered), гости уходят — стол нужно освободить для следующей брони/заказа,
+  // иначе он "зависнет" занятым навсегда. Доставка/самовывоз не привязаны к столу — пропускаем.
+  if (order_status === "delivered" && updatedOrder.table_id) {
+    db.tables.setStatus(updatedOrder.table_id, "free");
+  }
+
   const items = db.orderItems.findByOrder(id);
 
   res.json({
