@@ -16,7 +16,7 @@ const DB_PATH = path.resolve(__dirname, "../data/crm.db");
 
 // ─── Настройки — измени перед запуском ───────────────────────────────────────
 const ADMIN_EMAIL    = "askiloff10@gmail.com";   // ← твой email
-const ADMIN_PASSWORD = "Nuris-2011n";     // ← твой пароль (поменяй!)
+const ADMIN_PASSWORD = "Nurisss-love3";     // ← твой пароль (поменяй!)
 const INVITE_CODE    = "START2026";    // ← код для первого клиента
 // ─────────────────────────────────────────────────────────────────────────────
 
