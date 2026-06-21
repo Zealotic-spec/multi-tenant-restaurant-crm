@@ -53,6 +53,7 @@ import {
   Award,
   Tag,
   ShoppingCart,
+  MessageSquare,
 } from "lucide-react";
 import InteractiveMap from "./components/InteractiveMap";
 import KitchenDashboard from "./components/KitchenDashboard";
@@ -292,32 +293,6 @@ export default function App() {
       showToast("Консоль инспектора очищена");
     } catch (err) {
       showToast("Ошибка при очистке логов", "error");
-    }
-  };
-
-  const resetDatabase = async () => {
-    if (!crmToken || crmUser?.role !== "super_admin") {
-      showToast("Сброс БД доступен только авторизованному Super Admin", "error");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/system/db-reset`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${crmToken}` }
-      });
-      const data = await res.json();
-      setTick((t) => t + 1);
-      if (res.ok) {
-        showToast(data.message || "База данных перезапущена с исходными семенами! Овербукинг разблокирован.");
-      } else {
-        showToast(data.error || "Ошибка сброса", "error");
-      }
-      handleCrmLogout();
-    } catch (err) {
-      showToast("Ошибка сброса", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1021,7 +996,111 @@ export default function App() {
 
   return (
     <div id="full_saas_shell" className="min-h-screen bg-[#07070a] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 selection:text-white">
-      
+
+      {/* --- LIVE SYSTEM NOTICE GLASS BANNER (общая для всех ролей, включая Super Admin) --- */}
+      <AnimatePresence>
+        {alertMsg && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={`fixed top-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3.5 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-3 border text-xs max-w-lg backdrop-blur-md ${
+              alertMsg.type === "success"
+                ? "bg-emerald-950/90 border-emerald-500/40 text-emerald-200"
+                : alertMsg.type === "error"
+                ? "bg-red-950/90 border-red-500/40 text-red-200"
+                : "bg-indigo-950/90 border-indigo-500/40 text-indigo-200"
+            }`}
+          >
+            {alertMsg.type === "success" && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+            {alertMsg.type === "error" && <AlertOctagon className="w-4 h-4 text-red-400 shrink-0" />}
+            {alertMsg.type === "info" && <Bell className="w-4 h-4 text-indigo-400 shrink-0" />}
+            <p className="font-mono leading-relaxed font-semibold">{alertMsg.text}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {crmUser?.role === "super_admin" ? (
+        /* SUPER ADMIN: единственная разрешённая функция — регистрация нового ресторана
+           и аккаунта его основателя. Никаких других экранов, списков или действий он не видит. */
+        <>
+          <header className="bg-zinc-950/70 border-b border-zinc-900/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-2 rounded-xl shadow-[0_0_15px_rgba(251,191,36,0.25)] flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 text-slate-950 stroke-[3px]" />
+              </div>
+              <div>
+                <h1 className="text-md font-bold font-display tracking-tight text-white">Super Admin</h1>
+                <p className="text-[11px] text-slate-500 tracking-wide">{crmUser?.email}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleCrmLogout}
+              className="flex items-center gap-1.5 bg-red-950/30 hover:bg-red-900/50 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all active:scale-95 cursor-pointer"
+            >
+              Выйти
+            </button>
+          </header>
+
+          <main className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+            <div className="max-w-md w-full bg-zinc-950 border border-zinc-900 p-6 rounded-3xl space-y-4 shadow-2xl">
+              <div className="text-center space-y-1 pb-3 border-b border-zinc-900">
+                <div className="w-10 h-10 mx-auto mb-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
+                  <Crown className="w-5 h-5 text-slate-950" />
+                </div>
+                <h3 className="text-base font-bold font-display text-white">Зарегистрировать ресторан</h3>
+                <p className="text-[12px] text-slate-500">Единственная функция Super Admin — создание новых ресторанов и аккаунтов их основателей</p>
+              </div>
+
+              <form onSubmit={handleCreateRestaurant} className="space-y-3 font-mono text-xs">
+                <div>
+                  <label className="block text-slate-500 mb-1.5 font-bold uppercase">Название ресторана</label>
+                  <input
+                    type="text"
+                    required
+                    value={restaurantForm.name}
+                    onChange={(e) => setRestaurantForm({ ...restaurantForm, name: e.target.value })}
+                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none font-sans text-xs"
+                    placeholder="Название ресторана / сети"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 mb-1.5 font-bold uppercase">Email основателя</label>
+                  <input
+                    type="email"
+                    required
+                    value={restaurantForm.owner_email}
+                    onChange={(e) => setRestaurantForm({ ...restaurantForm, owner_email: e.target.value })}
+                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none text-xs"
+                    placeholder="founder@restaurant.kz"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 mb-1.5 font-bold uppercase">Пароль основателя</label>
+                  <input
+                    type="password"
+                    required
+                    value={restaurantForm.owner_password}
+                    onChange={(e) => setRestaurantForm({ ...restaurantForm, owner_password: e.target.value })}
+                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none text-xs"
+                  />
+                </div>
+                <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-[10px] text-amber-300/80 font-sans leading-relaxed">
+                  Создаст изолированный ресторан (свой restaurant_id и api_key) и аккаунт основателя. Управление меню, столами, сотрудниками и заказами — задача самого основателя внутри CRM, не Super Admin.
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer uppercase disabled:opacity-50"
+                >
+                  Зарегистрировать
+                </button>
+              </form>
+            </div>
+          </main>
+        </>
+      ) : (
+        <>
       {/* 1. FUTURISTIC MATRIX TOP RAIL */}
       <header className="bg-zinc-950/70 border-b border-zinc-900/80 px-6 py-4 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50 backdrop-blur-md">
         <div className="flex items-center gap-3">
@@ -1044,42 +1123,8 @@ export default function App() {
             <span className="text-[10px] text-slate-500">ISOLATION BUFFER:</span>
             <span className="text-[10px] text-emerald-400 font-bold uppercase">POLLED RELATIONAL STREAM</span>
           </div>
-
-          {crmUser?.role === "super_admin" && (
-            <button
-              onClick={resetDatabase}
-              disabled={loading}
-              className="flex items-center gap-1.5 bg-red-950/30 hover:bg-red-900/50 text-red-400 hover:text-red-200 border border-red-500/20 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-              СБРОС БД
-            </button>
-          )}
         </div>
       </header>
-
-      {/* --- LIVE SYSTEM NOTICE GLASS BANNER --- */}
-      <AnimatePresence>
-        {alertMsg && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className={`fixed top-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3.5 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center gap-3 border text-xs max-w-lg backdrop-blur-md ${
-              alertMsg.type === "success"
-                ? "bg-emerald-950/90 border-emerald-500/40 text-emerald-200"
-                : alertMsg.type === "error"
-                ? "bg-red-950/90 border-red-500/40 text-red-200"
-                : "bg-indigo-950/90 border-indigo-500/40 text-indigo-200"
-            }`}
-          >
-            {alertMsg.type === "success" && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-            {alertMsg.type === "error" && <AlertOctagon className="w-4 h-4 text-red-400 shrink-0" />}
-            {alertMsg.type === "info" && <Bell className="w-4 h-4 text-indigo-400 shrink-0" />}
-            <p className="font-mono leading-relaxed font-semibold">{alertMsg.text}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* --- УНИВЕРСАЛЬНОЕ МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ (замена window.confirm) --- */}
       <AnimatePresence>
@@ -2843,14 +2888,26 @@ CREATE TABLE orders (
           </AnimatePresence>
         </main>
       </div>
+        </>
+      )}
 
       {/* FOOTER BAR */}
       <footer className="bg-zinc-950 border-t border-zinc-900/80 p-4 px-6 flex flex-wrap justify-between items-center text-[10px] tracking-wide font-mono text-slate-650 gap-2">
         <span>© 2026 REZO-MATRIX PORTAL. POWERED BY COMPLIANT MULTI-TENANCY CRM SERVICES. SECURITY GUARANTEED.</span>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <span className="hover:text-indigo-400 font-bold pointer-events-none uppercase">REST ISOLATION ENFORCED</span>
           <span>|</span>
           <span className="hover:text-indigo-400 font-bold pointer-events-none uppercase">POSTGRES COMPATIBLE DATABASE CACHE</span>
+          <span>|</span>
+          <a
+            href="mailto:askiloff10@gmail.com?subject=RestoCRM%20Feedback"
+            className="flex items-center gap-1.5 hover:text-indigo-400 transition-colors"
+          >
+            <MessageSquare className="w-3 h-3" />
+            Оставить отзыв
+          </a>
+          <span>|</span>
+          <span className="text-slate-600">Created by Marat Nurislam</span>
         </div>
       </footer>
     </div>

@@ -4,7 +4,7 @@ import {
   CalendarCheck2, Clock, Users, Phone, User, MapPin,
   ShoppingBag, Plus, Minus, Trash2, CheckCircle2, AlertCircle,
   Store, Bike, UtensilsCrossed, Loader2, ChevronLeft, ArrowRight,
-  CalendarDays, ShoppingCart, Check, Tag, Leaf, Star, Flame, Sparkles, Award,
+  CalendarDays, ShoppingCart, Check, Tag, Leaf, Star, Flame, Sparkles, Award, MessageSquare,
 } from "lucide-react";
 import { DiningTable, MenuItem } from "./types";
 
@@ -955,6 +955,19 @@ export default function ClientPortal({ apiKey }: ClientPortalProps) {
           </div>
         )}
       </main>
+
+      {/* ФУТЕР: обратная связь + авторство */}
+      <footer className="border-t border-white/10 px-4 py-4 flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-500">
+        <a
+          href="mailto:askiloff10@gmail.com?subject=RestoCRM%20Feedback"
+          className="flex items-center gap-1.5 hover:text-amber-400 transition-colors"
+        >
+          <MessageSquare className="w-3 h-3" />
+          Оставить отзыв
+        </a>
+        <span className="text-slate-700">|</span>
+        <span>Created by Marat Nurislam</span>
+      </footer>
     </div>
   );
 }
