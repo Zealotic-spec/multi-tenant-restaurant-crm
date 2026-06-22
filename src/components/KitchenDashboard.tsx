@@ -26,16 +26,17 @@ interface KitchenDashboardProps {
 }
 
 // Countdown timer item representation focusing on micro seconds/minutes updates
-function KitchenTimerCard({ 
-  order, 
-  onNext 
-}: { 
+function KitchenTimerCard({
+  order,
+  onNext
+}: {
   key?: string;
-  order: Order & { items?: OrderItem[] }; 
-  onNext: () => void 
+  order: Order & { items?: OrderItem[] };
+  onNext: () => void
 }) {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [isBreached, setIsBreached] = useState<boolean>(false);
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   useEffect(() => {
     function calculateTime() {
@@ -137,19 +138,31 @@ function KitchenTimerCard({
         </div>
       </div>
 
-      {/* List of items inside the order */}
-      <div className="border-t border-b border-zinc-800/80 py-3 my-3 space-y-2.5 max-h-48 overflow-y-auto scrollbar-thin">
-        {order.items?.map((item) => (
-          <div key={item.id} className="flex items-start justify-between gap-2 text-xs">
-            <div className="flex items-start gap-2">
-              <span className="font-bold font-mono text-emerald-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                {item.quantity}x
-              </span>
-              <span className="text-slate-200 font-medium leading-relaxed">{item.dish_name}</span>
+      {/* Expandable items list */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between border-t border-zinc-800/80 pt-2 mt-2 text-[10px] font-mono font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
+      >
+        <span className="flex items-center gap-1">
+          <FileText className="w-3 h-3" />
+          {order.items?.length || 0} позиц. в заказе
+        </span>
+        <span>{expanded ? "▲ скрыть" : "▼ показать"}</span>
+      </button>
+      {expanded && (
+        <div className="border-b border-zinc-800/80 py-3 mb-1 space-y-2.5 max-h-48 overflow-y-auto">
+          {order.items?.map((item) => (
+            <div key={item.id} className="flex items-start justify-between gap-2 text-xs">
+              <div className="flex items-start gap-2">
+                <span className="font-bold font-mono text-emerald-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                  {item.quantity}x
+                </span>
+                <span className="text-slate-200 font-medium leading-relaxed">{item.dish_name}</span>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Tactile Big action touch-target for quick workspace flow */}
       <div className="flex items-center justify-between gap-3 mt-4">

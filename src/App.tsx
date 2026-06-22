@@ -54,6 +54,7 @@ import {
   Tag,
   ShoppingCart,
   MessageSquare,
+  Key,
 } from "lucide-react";
 import InteractiveMap from "./components/InteractiveMap";
 import KitchenDashboard from "./components/KitchenDashboard";
@@ -107,6 +108,13 @@ export default function App() {
 
   // Restaurant registration form (super_admin)
   const [restaurantForm, setRestaurantForm] = useState({ name: "", owner_email: "", owner_password: "" });
+  const [superAdminTab, setSuperAdminTab] = useState<"create" | "invites">("create");
+  const [newInviteCode, setNewInviteCode] = useState("");
+  const [inviteCodes, setInviteCodes] = useState<{ code: string; used_at: string | null; note: string | null }[]>([]);
+
+  // Sorting state
+  const [reservationSort, setReservationSort] = useState<"date_asc" | "date_desc" | "status">("date_asc");
+  const [kitchenSort, setKitchenSort] = useState<"date_asc" | "date_desc">("date_asc");
 
   // System logs & state
   const [systemLogs, setSystemLogs] = useState<ApiLog[]>([]);
@@ -533,6 +541,41 @@ export default function App() {
       showToast("Сбой соединения", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchInviteCodes = async () => {
+    if (!crmToken || crmUser?.role !== "super_admin") return;
+    try {
+      const res = await fetch(`${API_BASE}/system/invite-codes`, {
+        headers: { Authorization: `Bearer ${crmToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInviteCodes(data.codes || []);
+      }
+    } catch {}
+  };
+
+  const handleCreateInviteCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!crmToken || !newInviteCode.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/system/invite-codes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${crmToken}` },
+        body: JSON.stringify({ code: newInviteCode.trim().toUpperCase(), note: "" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Invite-код создан");
+        setNewInviteCode("");
+        fetchInviteCodes();
+      } else {
+        showToast(data.error || "Ошибка", "error");
+      }
+    } catch {
+      showToast("Сбой соединения", "error");
     }
   };
 
@@ -1042,60 +1085,112 @@ export default function App() {
             </button>
           </header>
 
-          <main className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="max-w-md w-full bg-zinc-950 border border-zinc-900 p-6 rounded-3xl space-y-4 shadow-2xl">
-              <div className="text-center space-y-1 pb-3 border-b border-zinc-900">
-                <div className="w-10 h-10 mx-auto mb-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
-                  <Crown className="w-5 h-5 text-slate-950" />
-                </div>
-                <h3 className="text-base font-bold font-display text-white">Зарегистрировать ресторан</h3>
-                <p className="text-[12px] text-slate-500">Единственная функция Super Admin — создание новых ресторанов и аккаунтов их основателей</p>
+          <main className="flex-1 p-6 overflow-y-auto">
+            <div className="max-w-2xl mx-auto space-y-4">
+              {/* Tabs */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSuperAdminTab("create")}
+                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${superAdminTab === "create" ? "bg-amber-500 text-slate-950 border-amber-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}
+                >
+                  <Plus className="w-3.5 h-3.5" /> Новый ресторан
+                </button>
+                <button
+                  onClick={() => { setSuperAdminTab("invites"); fetchInviteCodes(); }}
+                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold uppercase transition-all cursor-pointer border flex items-center gap-1.5 ${superAdminTab === "invites" ? "bg-amber-500 text-slate-950 border-amber-400" : "bg-zinc-900/50 text-slate-400 border-transparent hover:text-white"}`}
+                >
+                  <Key className="w-3.5 h-3.5" /> Invite-коды
+                </button>
               </div>
 
-              <form onSubmit={handleCreateRestaurant} className="space-y-3 font-mono text-xs">
-                <div>
-                  <label className="block text-slate-500 mb-1.5 font-bold uppercase">Название ресторана</label>
-                  <input
-                    type="text"
-                    required
-                    value={restaurantForm.name}
-                    onChange={(e) => setRestaurantForm({ ...restaurantForm, name: e.target.value })}
-                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none font-sans text-xs"
-                    placeholder="Название ресторана / сети"
-                  />
+              {superAdminTab === "create" && (
+                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl space-y-4 shadow-2xl">
+                  <div className="flex items-center gap-2 pb-3 border-b border-zinc-900">
+                    <Crown className="w-4 h-4 text-amber-400" />
+                    <h3 className="text-sm font-bold font-display text-white">Зарегистрировать ресторан</h3>
+                  </div>
+                  <form onSubmit={handleCreateRestaurant} className="space-y-3 font-mono text-xs">
+                    <div>
+                      <label className="block text-slate-500 mb-1.5 font-bold uppercase">Название ресторана</label>
+                      <input
+                        type="text"
+                        required
+                        value={restaurantForm.name}
+                        onChange={(e) => setRestaurantForm({ ...restaurantForm, name: e.target.value })}
+                        className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none font-sans text-xs"
+                        placeholder="Название ресторана / сети"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-500 mb-1.5 font-bold uppercase">Email основателя</label>
+                      <input
+                        type="email"
+                        required
+                        value={restaurantForm.owner_email}
+                        onChange={(e) => setRestaurantForm({ ...restaurantForm, owner_email: e.target.value })}
+                        className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none text-xs"
+                        placeholder="founder@restaurant.kz"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-500 mb-1.5 font-bold uppercase">Пароль основателя</label>
+                      <input
+                        type="password"
+                        required
+                        value={restaurantForm.owner_password}
+                        onChange={(e) => setRestaurantForm({ ...restaurantForm, owner_password: e.target.value })}
+                        className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none text-xs"
+                      />
+                    </div>
+                    <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-[10px] text-amber-300/80 font-sans leading-relaxed">
+                      Создаст изолированный ресторан (свой restaurant_id и api_key) и аккаунт основателя.
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer uppercase disabled:opacity-50"
+                    >
+                      Зарегистрировать
+                    </button>
+                  </form>
                 </div>
-                <div>
-                  <label className="block text-slate-500 mb-1.5 font-bold uppercase">Email основателя</label>
-                  <input
-                    type="email"
-                    required
-                    value={restaurantForm.owner_email}
-                    onChange={(e) => setRestaurantForm({ ...restaurantForm, owner_email: e.target.value })}
-                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none text-xs"
-                    placeholder="founder@restaurant.kz"
-                  />
+              )}
+
+              {superAdminTab === "invites" && (
+                <div className="bg-zinc-950 border border-zinc-900 p-6 rounded-2xl space-y-4 shadow-2xl">
+                  <div className="flex items-center gap-2 pb-3 border-b border-zinc-900">
+                    <Key className="w-4 h-4 text-amber-400" />
+                    <h3 className="text-sm font-bold font-display text-white">Управление Invite-кодами</h3>
+                  </div>
+                  <form onSubmit={handleCreateInviteCode} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newInviteCode}
+                      onChange={(e) => setNewInviteCode(e.target.value.toUpperCase())}
+                      placeholder="НОВЫЙ КОД"
+                      className="flex-1 bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none font-mono text-xs uppercase"
+                    />
+                    <button
+                      type="submit"
+                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs cursor-pointer uppercase"
+                    >
+                      Создать
+                    </button>
+                  </form>
+                  <div className="space-y-2">
+                    {inviteCodes.length === 0 ? (
+                      <p className="text-xs text-slate-500 font-mono text-center py-6">Нет кодов. Нажмите "Создать".</p>
+                    ) : inviteCodes.map((c) => (
+                      <div key={c.code} className="flex items-center justify-between p-3 bg-zinc-900/40 border border-zinc-800 rounded-xl">
+                        <span className="font-mono font-bold text-sm text-white tracking-widest">{c.code}</span>
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${c.used_at ? "bg-red-950 text-red-400 border border-red-500/20" : "bg-emerald-950 text-emerald-400 border border-emerald-500/20"}`}>
+                          {c.used_at ? "ИСПОЛЬЗОВАН" : "СВОБОДЕН"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-slate-500 mb-1.5 font-bold uppercase">Пароль основателя</label>
-                  <input
-                    type="password"
-                    required
-                    value={restaurantForm.owner_password}
-                    onChange={(e) => setRestaurantForm({ ...restaurantForm, owner_password: e.target.value })}
-                    className="w-full bg-[#050508] text-white border border-zinc-900 focus:border-amber-400 rounded-lg p-2.5 outline-none text-xs"
-                  />
-                </div>
-                <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-[10px] text-amber-300/80 font-sans leading-relaxed">
-                  Создаст изолированный ресторан (свой restaurant_id и api_key) и аккаунт основателя. Управление меню, столами, сотрудниками и заказами — задача самого основателя внутри CRM, не Super Admin.
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl transition-all text-xs cursor-pointer uppercase disabled:opacity-50"
-                >
-                  Зарегистрировать
-                </button>
-              </form>
+              )}
             </div>
           </main>
         </>
@@ -2309,13 +2404,22 @@ CREATE TABLE orders (
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => fetchCrmReservations()}
-                            disabled={reservationsLoading}
-                            className="bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-zinc-800 flex items-center gap-1 cursor-pointer disabled:opacity-60"
-                          >
-                            <RefreshCw className={`w-3 h-3 ${reservationsLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ СПИСОК
-                          </button>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-mono text-slate-500 uppercase font-bold">Сортировка:</span>
+                            {(["date_asc", "date_desc", "status"] as const).map((s) => (
+                              <button key={s} onClick={() => setReservationSort(s)}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold cursor-pointer border transition-all ${reservationSort === s ? "bg-indigo-500 text-slate-950 border-indigo-400" : "bg-zinc-900 text-slate-400 border-zinc-800 hover:text-white"}`}>
+                                {s === "date_asc" ? "Дата ↑" : s === "date_desc" ? "Дата ↓" : "По статусу"}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => fetchCrmReservations()}
+                              disabled={reservationsLoading}
+                              className="ml-auto bg-zinc-900 hover:bg-zinc-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all border border-zinc-800 flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${reservationsLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ
+                            </button>
+                          </div>
                         </div>
 
                         {crmReservations.length === 0 ? (
@@ -2338,7 +2442,12 @@ CREATE TABLE orders (
                                 </tr>
                               </thead>
                               <tbody>
-                                {crmReservations.map((res) => (
+                                {[...crmReservations].sort((a, b) => {
+                                  if (reservationSort === "date_asc") return new Date(`${a.date} ${a.time}`).getTime() - new Date(`${b.date} ${b.time}`).getTime();
+                                  if (reservationSort === "date_desc") return new Date(`${b.date} ${b.time}`).getTime() - new Date(`${a.date} ${a.time}`).getTime();
+                                  const order = { pending: 0, confirmed: 1, cancelled: 2, completed: 3 };
+                                  return (order[a.status as keyof typeof order] ?? 4) - (order[b.status as keyof typeof order] ?? 4);
+                                }).map((res) => (
                                   <tr key={res.id} className="border-b border-zinc-900/60 hover:bg-zinc-900/20 transition-colors font-mono font-medium text-[11px]">
                                     <td className="p-3 font-bold text-indigo-400">#{res.id.slice(-4).toUpperCase()}</td>
                                     <td className="p-3 font-bold text-slate-200 font-sans text-xs">[ФИО Клиента: {res.customer_name}]</td>
@@ -2723,18 +2832,30 @@ CREATE TABLE orders (
                             <span className="text-[10px] font-mono text-slate-500 font-bold block">GET /crm/orders (Paid order tracks belonging only to restaurant_id)</span>
                           </div>
 
-                          <button
-                            onClick={() => fetchCrmOrders()}
-                            disabled={ordersLoading}
-                            className="bg-zinc-900 hover:bg-zinc-800 text-slate-100 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border border-zinc-800 flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
-                          >
-                            <RefreshCw className={`w-3.5 h-3.5 ${ordersLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ ОЧЕРЕДЬ
-                          </button>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-mono text-slate-500 uppercase font-bold">Сортировка:</span>
+                            {(["date_asc", "date_desc"] as const).map((s) => (
+                              <button key={s} onClick={() => setKitchenSort(s)}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold cursor-pointer border transition-all ${kitchenSort === s ? "bg-amber-400 text-slate-950 border-amber-300" : "bg-zinc-900 text-slate-400 border-zinc-800 hover:text-white"}`}>
+                                {s === "date_asc" ? "Старые первыми ↑" : "Новые первыми ↓"}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => fetchCrmOrders()}
+                              disabled={ordersLoading}
+                              className="ml-auto bg-zinc-900 hover:bg-zinc-800 text-slate-100 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border border-zinc-800 flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 ${ordersLoading ? "animate-spin" : ""}`} /> ОБНОВИТЬ
+                            </button>
+                          </div>
                         </div>
 
                         {/* Rendering the custom high-tech touchscreen dashboard Kanban */}
                         <KitchenDashboard
-                          orders={crmOrders}
+                          orders={[...crmOrders].sort((a, b) => kitchenSort === "date_asc"
+                            ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                            : new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                          )}
                           onUpdateStatus={(id, status) => handleUpdateOrderStatus(id, status)}
                           isLoading={false}
                         />
