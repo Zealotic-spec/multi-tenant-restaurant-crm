@@ -46,7 +46,7 @@ async function startServer() {
   await initDatabase();
 
   const app = express();
-  const PORT = Number(process.env.PORT) || 3001;
+  const PORT = Number(process.env.INTERNAL_PORT || process.env.PORT) || 3001;
 
   app.use(corsMiddleware);
   // Лимит увеличен с дефолтных 100kb — фото блюд меню загружаются как base64 data URL в JSON body.
