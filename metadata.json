@@ -2,7 +2,5 @@
   "name": "Multi-Tenant Restaurant CRM API Broker",
   "description": "A robust, multi-tenant REST API & Interactive Explorer for Restaurant SaaS CRM systems. Features JWT/API Key auth & full data tenant isolation",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": []
 }

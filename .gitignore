@@ -8,3 +8,7 @@ coverage/
 !.env.example
 data/
 db.json
+memory/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+public/pitch.html

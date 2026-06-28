@@ -1,14 +1,15 @@
 import { Response } from "express";
 import { SecureRequest } from "../middlewares/tenant";
 import { db, Order } from "../db";
+import { pool } from "../pgdb";
 
 /**
  * 1. Client Site Endpoint: Submit express checkout order (with items array)
  * POST /api/v1/client/orders
  * Needs X-Restaurant-Key (restaurant_id in req.restaurant_id)
  */
-export function clientCreateOrder(req: SecureRequest, res: Response) {
-  const { total_amount, items, table_id, delivery_type, delivery_address, customer_name, customer_phone } = req.body;
+export async function clientCreateOrder(req: SecureRequest, res: Response) {
+  const { total_amount, items, table_id, delivery_type, customer_name, customer_phone } = req.body;
   const restaurant_id = req.restaurant_id;
 
   if (!restaurant_id) {
@@ -24,7 +25,7 @@ export function clientCreateOrder(req: SecureRequest, res: Response) {
     return;
   }
 
-  // Delivery configuration checks
+  // Курьерская доставка ("delivery") удалена из системы — допускаются только "in_restaurant" и "takeaway".
   const resolvedDelivery: Order["delivery_type"] = delivery_type || "takeaway";
 
   if (resolvedDelivery === "in_restaurant" && !table_id) {
@@ -34,27 +35,27 @@ export function clientCreateOrder(req: SecureRequest, res: Response) {
     return;
   }
 
-  if (resolvedDelivery === "delivery") {
-    if (!String(delivery_address || "").trim()) {
-      res.status(400).json({
-        error: "Delivery address required: delivery_address must be provided when delivery_type is 'delivery'.",
-      });
-      return;
-    }
-    if (!String(customer_name || "").trim() || !String(customer_phone || "").trim()) {
-      res.status(400).json({
-        error: "Courier contact required: customer_name and customer_phone must be provided when delivery_type is 'delivery'.",
+  // Cross-tenant validation lookup to prevent table spoofing
+  if (table_id) {
+    const tableRow = await db.tables.findByIdAndRestaurant(table_id, restaurant_id);
+    if (!tableRow) {
+      res.status(404).json({
+        error: "Spoofing attempt detected: The specified table does not belong to this restaurant tenant.",
       });
       return;
     }
   }
 
-  // Cross-tenant validation lookup to prevent table spoofing
-  if (table_id) {
-    const tableRow = db.tables.findByIdAndRestaurant(table_id, restaurant_id);
-    if (!tableRow) {
-      res.status(404).json({
-        error: "Spoofing attempt detected: The specified table does not belong to this restaurant tenant.",
+  // Задача 5: заказ "в заведении" обязан идти ВСЛЕД за активной бронью этого стола на сегодня —
+  // иначе кухня начнёт готовить блюда к приходу гостей, которых стол не ждёт. Проверяем здесь
+  // (не только на фронтенде в ClientPortal), чтобы прямой вызов API не обошёл правило.
+  if (resolvedDelivery === "in_restaurant" && table_id) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todaysReservations = await db.reservations.findByTableAndDate(table_id, todayStr);
+    const hasActiveReservation = todaysReservations.some((r) => r.status === "pending" || r.status === "confirmed");
+    if (!hasActiveReservation) {
+      res.status(403).json({
+        error: "Заказ в заведении доступен только после оформления брони этого стола на сегодня.",
       });
       return;
     }
@@ -70,34 +71,45 @@ export function clientCreateOrder(req: SecureRequest, res: Response) {
     }
   }
 
-  // Construct primary Order (State initialized as pending and cooking state 'new')
-  const newOrder = db.orders.create({
-    restaurant_id,
-    table_id: table_id || undefined,
-    delivery_type: resolvedDelivery,
-    delivery_address: resolvedDelivery === "delivery" ? String(delivery_address).trim() : undefined,
-    customer_name: customer_name ? String(customer_name).trim() : undefined,
-    customer_phone: customer_phone ? String(customer_phone).trim() : undefined,
-    total_amount: Number(total_amount),
-    payment_status: "pending",
-    order_status: "new",
-    // SLA по типу подачи: в зале — 15 мин, доставка на дом — 45 мин (готовка + время курьера), самовывоз — 25 мин
-    sla_minutes: resolvedDelivery === "in_restaurant" ? 15 : resolvedDelivery === "delivery" ? 45 : 25,
-  });
-
-  // Persist order items inside the relational-bound database
-  const savedItems = items.map((item) =>
-    db.orderItems.create({
-      order_id: newOrder.id,
-      dish_name: item.dish_name,
-      quantity: Number(item.quantity),
-      price_per_unit: Number(item.price_per_unit),
-    })
-  );
+  // Construct primary Order and items in a single transaction to prevent partial writes
+  const client = await pool.connect();
+  let newOrder: Awaited<ReturnType<typeof db.orders.create>>;
+  let savedItems: Awaited<ReturnType<typeof db.orderItems.create>>[];
+  try {
+    await client.query("BEGIN");
+    newOrder = await db.orders.create({
+      restaurant_id,
+      table_id: table_id || undefined,
+      delivery_type: resolvedDelivery,
+      customer_name: customer_name ? String(customer_name).trim() : undefined,
+      customer_phone: customer_phone ? String(customer_phone).trim() : undefined,
+      total_amount: Number(total_amount),
+      payment_status: "pending",
+      order_status: "new",
+      // SLA по типу подачи: в зале — 15 мин (стол уже накрыт), самовывоз — 25 мин (готовка + ожидание у стойки).
+      sla_minutes: resolvedDelivery === "in_restaurant" ? 15 : 25,
+    });
+    savedItems = await Promise.all(
+      items.map((item) =>
+        db.orderItems.create({
+          order_id: newOrder.id,
+          dish_name: item.dish_name,
+          quantity: Number(item.quantity),
+          price_per_unit: Number(item.price_per_unit),
+        })
+      )
+    );
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 
   // If ordering at a table inside the dining hall, we lock the table to 'occupied' status in parallel
   if (table_id) {
-    db.tables.setStatus(table_id, "occupied");
+    await db.tables.setStatus(table_id, restaurant_id, "occupied");
   }
 
   res.status(201).json({
@@ -114,7 +126,7 @@ export function clientCreateOrder(req: SecureRequest, res: Response) {
  *
  * Strict Idempotency & Reentrancy Guards against Double-Spending are implemented here.
  */
-export function clientPaymentWebhook(req: SecureRequest, res: Response) {
+export async function clientPaymentWebhook(req: SecureRequest, res: Response) {
   const { order_id, idemp_key, status, amount } = req.body;
 
   if (!order_id || !idemp_key || !status) {
@@ -124,21 +136,10 @@ export function clientPaymentWebhook(req: SecureRequest, res: Response) {
     return;
   }
 
-  // --- STEP 1: IDEMPOTENCY GUARD ---
-  // If transaction has already been processed for this unique token, yield cached response immediately
-  const existingTx = db.paymentTransactions.findByKey(idemp_key);
-
-  if (existingTx) {
-    res.status(200).json({
-      message: "Idempotency Triggered: This payment webhook transaction was already successfully processed.",
-      duplicate: true,
-      transaction: existingTx,
-    });
-    return;
-  }
+  // --- STEP 1: IDEMPOTENCY GUARD (checked again atomically at INSERT via ON CONFLICT) ---
 
   // --- STEP 2: LOOKUP SYSTEM ORDER ---
-  const targetOrder = db.orders.findById(order_id);
+  const targetOrder = await db.orders.findById(order_id);
 
   if (!targetOrder) {
     res.status(404).json({
@@ -151,7 +152,7 @@ export function clientPaymentWebhook(req: SecureRequest, res: Response) {
   // Defuse Double spending by ensuring orders already marked as 'paid' cannot have their payment repeated
   if (targetOrder.payment_status === "paid") {
     // Record fail transaction log to maintain full accounting audit trails
-    db.paymentTransactions.create({
+    await db.paymentTransactions.create({
       transaction_key: idemp_key,
       order_id,
       amount: Number(amount) || targetOrder.total_amount,
@@ -168,8 +169,8 @@ export function clientPaymentWebhook(req: SecureRequest, res: Response) {
 
   // Check state condition for failures received from bank
   if (status === "failed") {
-    db.orders.updatePaymentStatus(order_id, "failed");
-    db.paymentTransactions.create({
+    await db.orders.updatePaymentStatus(order_id, "failed");
+    await db.paymentTransactions.create({
       transaction_key: idemp_key,
       order_id,
       amount: Number(amount) || targetOrder.total_amount,
@@ -185,21 +186,29 @@ export function clientPaymentWebhook(req: SecureRequest, res: Response) {
   }
 
   // --- STEP 4: MUTATIVE COMMIT PHASE ---
-  db.orders.updatePaymentStatus(order_id, "paid", "new"); // Enqueues order directly into the Active Kitchen Board
+  await db.orders.updatePaymentStatus(order_id, "paid", "new"); // Enqueues order directly into the Active Kitchen Board
 
-  const successTx = db.paymentTransactions.create({
+  const successTx = await db.paymentTransactions.createIdempotent({
     transaction_key: idemp_key,
     order_id,
     amount: Number(amount) || targetOrder.total_amount,
     status: "success",
   });
 
-  const updatedOrder = db.orders.findById(order_id);
+  // ON CONFLICT DO NOTHING вернул null — дублирующий запрос, транзакция уже обработана
+  if (!successTx) {
+    res.status(200).json({
+      message: "Idempotency Triggered: This payment webhook transaction was already successfully processed.",
+      duplicate: true,
+    });
+    return;
+  }
+
+  const updatedOrder = await db.orders.findById(order_id);
 
   res.status(200).json({
     message: "Webhook processed successfully. Transaction registered, kitchen staff alerted in real-time.",
     receipt: {
-      fiscal_signature: `fisc_sig_${Math.random().toString(36).substr(2, 10).toUpperCase()}`,
       merchant_id: `merch_${targetOrder.restaurant_id}`,
       amount_processed: successTx.amount,
       authorized_at: successTx.created_at,
@@ -213,7 +222,7 @@ export function clientPaymentWebhook(req: SecureRequest, res: Response) {
  * GET /api/v1/crm/orders
  * Needs Bearer JWT (restaurant_id in req.restaurant_id)
  */
-export function crmGetOrders(req: SecureRequest, res: Response) {
+export async function crmGetOrders(req: SecureRequest, res: Response) {
   const restaurant_id = req.restaurant_id;
 
   if (!restaurant_id) {
@@ -221,18 +230,29 @@ export function crmGetOrders(req: SecureRequest, res: Response) {
     return;
   }
 
-  // CRM staff only fetches paid order tracks belonging specifically to context restaurant_id
-  const orders = db.orders.findByRestaurant(restaurant_id, { paymentStatus: "paid" });
+  const { page, limit } = req.query as { page?: string; limit?: string };
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(200, Math.max(1, Number(limit) || 50));
+  const offset = (pageNum - 1) * limitNum;
 
-  // Materialize item rows to give chef instant recipe instructions
-  const ordersWithItems = orders.map((order) => ({
-    ...order,
-    items: db.orderItems.findByOrder(order.id),
-  }));
+  // Один JOIN вместо N+1 запросов — без отдельного запроса per order
+  const ordersWithItems = await db.orderItems.findByRestaurantWithItems(restaurant_id, {
+    paymentStatus: "paid",
+    limit: limitNum,
+    offset,
+  });
+
+  const totalResult = await pool.query(
+    "SELECT COUNT(*)::int AS total FROM orders WHERE restaurant_id = $1 AND payment_status = 'paid'",
+    [restaurant_id]
+  );
 
   res.json({
     restaurant_id,
     count: ordersWithItems.length,
+    total: totalResult.rows[0].total,
+    page: pageNum,
+    limit: limitNum,
     orders: ordersWithItems,
   });
 }
@@ -241,8 +261,12 @@ export function crmGetOrders(req: SecureRequest, res: Response) {
  * 4. CRM Endpoint: Advance Kitchen Order status
  * PATCH /api/v1/crm/orders/:id
  * Needs Bearer JWT
+ *
+ * Переходы статуса заказа: new → cooking → ready → delivered.
+ * Курьерский статус "out_for_delivery" удалён вместе с доставкой на дом (Задача 6) —
+ * после "ready" заказ всегда переходит прямиком в "delivered" (гость забрал/съел в зале).
  */
-export function crmUpdateOrderStatus(req: SecureRequest, res: Response) {
+export async function crmUpdateOrderStatus(req: SecureRequest, res: Response) {
   const { id } = req.params;
   const { order_status } = req.body;
   const restaurant_id = req.restaurant_id;
@@ -252,7 +276,7 @@ export function crmUpdateOrderStatus(req: SecureRequest, res: Response) {
     return;
   }
 
-  const validStatuses: Order["order_status"][] = ["new", "cooking", "ready", "out_for_delivery", "delivered"];
+  const validStatuses: Order["order_status"][] = ["new", "cooking", "ready", "delivered"];
   if (!order_status || !validStatuses.includes(order_status)) {
     res.status(400).json({
       error: `Invalid status argument. Allowed states: [${validStatuses.join(", ")}]`,
@@ -260,20 +284,8 @@ export function crmUpdateOrderStatus(req: SecureRequest, res: Response) {
     return;
   }
 
-  // Бизнес-правило: статус "курьер в пути" имеет смысл только для заказов с доставкой на дом —
-  // для "в заведении"/"самовывоз" заказ идёт прямо из ready в delivered.
-  if (order_status === "out_for_delivery") {
-    const existingOrder = db.orders.findByIdAndRestaurant(id, restaurant_id);
-    if (existingOrder && existingOrder.delivery_type !== "delivery") {
-      res.status(400).json({
-        error: "Business rule violated: 'out_for_delivery' is only valid for orders with delivery_type = 'delivery'.",
-      });
-      return;
-    }
-  }
-
-  // Tenant boundary enforced inside the repository: "...WHERE id = ? AND restaurant_id = ?"
-  const updatedOrder = db.orders.updateOrderStatus(id, restaurant_id, order_status);
+  // Tenant boundary enforced inside the repository: "...WHERE id = $1 AND restaurant_id = $2"
+  const updatedOrder = await db.orders.updateOrderStatus(id, restaurant_id, order_status);
 
   if (!updatedOrder) {
     res.status(404).json({
@@ -284,12 +296,12 @@ export function crmUpdateOrderStatus(req: SecureRequest, res: Response) {
 
   // Бизнес-правило: заказ "в заведении" занимает стол (см. clientCreateOrder → setStatus 'occupied').
   // Когда блюда поданы (delivered), гости уходят — стол нужно освободить для следующей брони/заказа,
-  // иначе он "зависнет" занятым навсегда. Доставка/самовывоз не привязаны к столу — пропускаем.
+  // иначе он "зависнет" занятым навсегда. Самовывоз не привязан к столу — пропускаем.
   if (order_status === "delivered" && updatedOrder.table_id) {
-    db.tables.setStatus(updatedOrder.table_id, "free");
+    await db.tables.setStatus(updatedOrder.table_id, restaurant_id, "free");
   }
 
-  const items = db.orderItems.findByOrder(id);
+  const items = await db.orderItems.findByOrder(id);
 
   res.json({
     message: `State advanced to: ${order_status}`,

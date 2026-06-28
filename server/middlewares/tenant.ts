@@ -39,7 +39,7 @@ export interface SecureRequest extends Omit<Request, "user"> {
   };
 }
 
-export function clientTenantAuth(req: SecureRequest, res: Response, next: NextFunction) {
+export async function clientTenantAuth(req: SecureRequest, res: Response, next: NextFunction) {
   const apiKey = req.header("X-Restaurant-Key");
 
   if (!apiKey) {
@@ -47,18 +47,23 @@ export function clientTenantAuth(req: SecureRequest, res: Response, next: NextFu
     return;
   }
 
-  const restaurant = db.restaurants.findByApiKey(apiKey);
+  try {
+    const restaurant = await db.restaurants.findByApiKey(apiKey);
 
-  if (!restaurant) {
-    res.status(401).json({ error: "Invalid or unknown X-Restaurant-Key." });
-    return;
+    if (!restaurant) {
+      res.status(401).json({ error: "Invalid or unknown X-Restaurant-Key." });
+      return;
+    }
+
+    req.restaurant_id = restaurant.id;
+    next();
+  } catch (err) {
+    // Ошибка БД у одного запроса не должна валить процесс — передаём в error-middleware Express.
+    next(err);
   }
-
-  req.restaurant_id = restaurant.id;
-  next();
 }
 
-export function crmTenantAuth(req: SecureRequest, res: Response, next: NextFunction) {
+export async function crmTenantAuth(req: SecureRequest, res: Response, next: NextFunction) {
   const authHeader = req.header("Authorization");
 
   if (!authHeader?.startsWith("Bearer ")) {
@@ -76,7 +81,7 @@ export function crmTenantAuth(req: SecureRequest, res: Response, next: NextFunct
       restaurant_id: string;
     };
 
-    const userRecord = db.users.findById(decoded.id);
+    const userRecord = await db.users.findById(decoded.id);
 
     // Роль в БД могла измениться (или сотрудника уволили) после выдачи токена — не доверяем
     // одному лишь содержимому JWT, перепроверяем текущее состояние записи в users.
@@ -96,7 +101,7 @@ export function crmTenantAuth(req: SecureRequest, res: Response, next: NextFunct
       // founder не привязан к одному restaurant_id — он может владеть несколькими ресторанами.
       // restaurant_id в токене — это "активный" ресторан (см. /crm/founder/switch-restaurant),
       // владение проверяется через restaurants.founder_id, а не через users.restaurant_id.
-      const restaurant = db.restaurants.findById(decoded.restaurant_id);
+      const restaurant = await db.restaurants.findById(decoded.restaurant_id);
       const owns = !!restaurant && restaurant.founder_id === userRecord.id && !restaurant.archived_at;
       if (!owns) {
         res.status(403).json({
@@ -115,7 +120,7 @@ export function crmTenantAuth(req: SecureRequest, res: Response, next: NextFunct
       res.status(403).json({ error: "Access denied: user not found or tenant mismatch." });
       return;
     }
-    const restaurant = db.restaurants.findById(decoded.restaurant_id);
+    const restaurant = await db.restaurants.findById(decoded.restaurant_id);
     if (!restaurant || restaurant.archived_at) {
       res.status(403).json({ error: "Access denied: ресторан архивирован или не найден." });
       return;
@@ -124,8 +129,12 @@ export function crmTenantAuth(req: SecureRequest, res: Response, next: NextFunct
     req.user = decoded;
     req.restaurant_id = decoded.restaurant_id;
     next();
-  } catch {
-    res.status(401).json({ error: "Invalid or expired JWT token." });
+  } catch (err) {
+    if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError) {
+      res.status(401).json({ error: "Invalid or expired JWT token." });
+      return;
+    }
+    next(err);
   }
 }
 

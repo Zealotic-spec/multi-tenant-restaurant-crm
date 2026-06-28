@@ -22,5 +22,6 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": ["node_modules", "frontend", "src_archive", "dist", "dist_prod_test", "dist_verify"]
 }

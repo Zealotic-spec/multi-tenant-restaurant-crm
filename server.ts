@@ -1,10 +1,14 @@
+import "dotenv/config";
 import express, { NextFunction, Request, Response } from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import apiRoutes from "./server/routes/api";
 import { sysLogs } from "./server/logs";
-import { db } from "./server/db";
+import { db, initDatabase } from "./server/db";
 import { crmTenantAuth, requireRole, SecureRequest } from "./server/middlewares/tenant";
+import { scheduleMonthlyCleanup } from "./server/archive";
+import { startIikoCron } from "./server/cron/iiko-cron";
+import { startReminderCron } from "./server/cron/reminder-cron";
+import { initMockSyncIfNeeded } from "./server/iiko/sync";
 
 const SENSITIVE_BODY_FIELDS = ["password", "owner_password", "password_hash"];
 
@@ -36,8 +40,13 @@ function corsMiddleware(req: Request, res: Response, next: NextFunction) {
 }
 
 async function startServer() {
+  // Postgres-пул и схема должны быть готовы ДО приёма первого запроса — иначе первые
+  // обращения к db.* посыпятся ошибками "relation does not exist". esbuild (cjs-бандл)
+  // не поддерживает top-level await, поэтому инициализация явно await-ится здесь.
+  await initDatabase();
+
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || 3001;
 
   app.use(corsMiddleware);
   // Лимит увеличен с дефолтных 100kb — фото блюд меню загружаются как base64 data URL в JSON body.
@@ -113,36 +122,22 @@ async function startServer() {
     res.json({ message: "Logs cleared" });
   });
 
-  app.get("/api/v1/system/db-dump", ...systemAuth, (req: SecureRequest, res: Response) => {
-    res.json(db.systemDump());
+  app.get("/api/v1/system/db-dump", ...systemAuth, async (req: SecureRequest, res: Response) => {
+    res.json(await db.systemDump());
   });
 
-  app.post("/api/v1/system/db-reset", ...systemAuth, (req: SecureRequest, res: Response) => {
-    db.reset();
+  app.post("/api/v1/system/db-reset", ...systemAuth, async (req: SecureRequest, res: Response) => {
+    await db.reset();
     sysLogs.clear();
     res.json({ status: "success", message: "Database reset to initial seeds" });
   });
 
   app.use("/api/v1", apiRoutes);
 
-  // Serve demo page
+  // Статика public
   app.use(express.static(path.join(process.cwd(), "public")));
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  // ── Глобальный error middleware: ошибка одного тенанта/запроса не валит процесс ──
+  // ── Глобальный error middleware ──
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     console.error(`[Unhandled Error] ${req.method} ${req.url}:`, err);
     if (res.headersSent) return;
@@ -150,8 +145,20 @@ async function startServer() {
   });
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Multi-Tenant Server] Listening on port ${PORT}`);
+    console.log(`[Dashboard API] Listening on port ${PORT}`);
   });
+
+  // Инициализируем mock-данные для всех существующих ресторанов (если пусто).
+  try {
+    const restaurants = await db.restaurants.findAll();
+    await Promise.allSettled(restaurants.map((r) => initMockSyncIfNeeded(r.id)));
+  } catch (err) {
+    console.error("[init] Mock sync failed:", err);
+  }
+
+  scheduleMonthlyCleanup();
+  startIikoCron();
+  startReminderCron();
 }
 
 // ── Отказоустойчивость процесса: один сбойный таск не должен убивать весь Node-процесс ──

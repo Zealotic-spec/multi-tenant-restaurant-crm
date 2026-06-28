@@ -10,7 +10,7 @@ import { hashPassword, verifyPassword } from "../utils/password";
  * Для founder'а (может владеть несколькими ресторанами) JWT получает "активный" restaurant_id —
  * по умолчанию первый созданный ресторан; переключение — через POST /crm/founder/switch-restaurant.
  */
-export function login(req: SecureRequest, res: Response) {
+export async function login(req: SecureRequest, res: Response) {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -18,7 +18,7 @@ export function login(req: SecureRequest, res: Response) {
     return;
   }
 
-  const user = db.users.findByEmail(email);
+  const user = await db.users.findByEmail(email);
 
   if (!user || !verifyPassword(password, user.password_hash)) {
     res.status(401).json({ error: "Invalid email or password" });
@@ -30,7 +30,7 @@ export function login(req: SecureRequest, res: Response) {
   let ownedRestaurants: { id: string; name: string; api_key: string }[] | undefined;
 
   if (user.role === "founder") {
-    const owned = db.restaurants.findByFounder(user.id);
+    const owned = await db.restaurants.findByFounder(user.id);
     if (owned.length === 0) {
       res.status(500).json({ error: "Database state error: founder без единого ресторана." });
       return;
@@ -39,7 +39,7 @@ export function login(req: SecureRequest, res: Response) {
     restaurantName = owned[0].name;
     ownedRestaurants = owned.map((r) => ({ id: r.id, name: r.name, api_key: r.api_key }));
   } else if (user.restaurant_id !== "system") {
-    const restaurant = db.restaurants.findById(user.restaurant_id);
+    const restaurant = await db.restaurants.findById(user.restaurant_id);
     if (!restaurant) {
       res.status(500).json({ error: "Database state error: Restaurant not found for user" });
       return;
@@ -58,6 +58,7 @@ export function login(req: SecureRequest, res: Response) {
       email: user.email,
       role: user.role,
       restaurant_id: activeRestaurantId,
+      restaurant_name: restaurantName,
     },
     JWT_SECRET,
     { expiresIn: "12h" }
@@ -85,7 +86,7 @@ export function login(req: SecureRequest, res: Response) {
  * Защищено одноразовым кодом приглашения (founder_invite_codes): код выдаёт лично
  * super_admin каждому клиенту, чтобы CRM не мог бесплатно подключить кто угодно.
  */
-export function register(req: SecureRequest, res: Response) {
+export async function register(req: SecureRequest, res: Response) {
   const { restaurant_name, email, password, invite_code } = req.body;
 
   if (!restaurant_name || !email || !password || !invite_code) {
@@ -100,7 +101,7 @@ export function register(req: SecureRequest, res: Response) {
     return;
   }
 
-  const invite = db.inviteCodes.findByCode(invite_code);
+  const invite = await db.inviteCodes.findByCode(invite_code);
   if (!invite) {
     res.status(403).json({ error: "Код приглашения не найден. Запросите персональный код у поставщика CRM." });
     return;
@@ -110,18 +111,18 @@ export function register(req: SecureRequest, res: Response) {
     return;
   }
 
-  if (db.users.findByEmail(email)) {
+  if (await db.users.findByEmail(email)) {
     res.status(409).json({ error: "Пользователь с таким e-mail уже зарегистрирован." });
     return;
   }
 
   const founderId = `usr_${randomUUID()}`;
-  const restaurant = db.restaurants.create({
+  const restaurant = await db.restaurants.create({
     name: restaurant_name,
     api_key: `api_${randomUUID()}`,
     founder_id: founderId,
   });
-  const founder = db.users.create({
+  const founder = await db.users.create({
     id: founderId,
     restaurant_id: restaurant.id,
     email,
@@ -129,7 +130,7 @@ export function register(req: SecureRequest, res: Response) {
     role: "founder",
   });
 
-  db.inviteCodes.markUsed(invite.code, founder.id);
+  await db.inviteCodes.markUsed(invite.code, founder.id);
 
   const token = jwt.sign(
     { id: founder.id, email: founder.email, role: founder.role, restaurant_id: restaurant.id },
@@ -155,7 +156,7 @@ export function register(req: SecureRequest, res: Response) {
  * Founder переключает "активный" ресторан (если владеет несколькими) — переиздаёт JWT
  * с новым restaurant_id. super_admin может переключиться в любой ресторан для диагностики.
  */
-export function switchRestaurant(req: SecureRequest, res: Response) {
+export async function switchRestaurant(req: SecureRequest, res: Response) {
   if (!req.user) {
     res.status(401).json({ error: "Authentication required." });
     return;
@@ -172,7 +173,7 @@ export function switchRestaurant(req: SecureRequest, res: Response) {
     return;
   }
 
-  const restaurant = db.restaurants.findById(restaurant_id);
+  const restaurant = await db.restaurants.findById(restaurant_id);
   if (!restaurant || restaurant.archived_at) {
     res.status(404).json({ error: "Ресторан не найден или архивирован." });
     return;
@@ -205,13 +206,13 @@ export function switchRestaurant(req: SecureRequest, res: Response) {
 /**
  * Retrieve current user profile based on JWT verification.
  */
-export function me(req: SecureRequest, res: Response) {
+export async function me(req: SecureRequest, res: Response) {
   if (!req.user) {
     res.status(401).json({ error: "Unauthorized: Staff context required" });
     return;
   }
 
-  const restaurant = db.restaurants.findById(req.user.restaurant_id);
+  const restaurant = await db.restaurants.findById(req.user.restaurant_id);
 
   res.json({
     user: req.user,
