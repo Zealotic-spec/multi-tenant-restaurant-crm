@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RestOS — операционная система вашего ресторана</title>
+<meta name="description" content="CRM + аналитика + автоматизация для ресторанов. Бронирования, кухня, персонал, маркетинг и интеграция с iiko — в одном дашборде.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "framer-motion": "https://esm.sh/framer-motion@11.11.17?external=react,react-dom",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#070b0a;
+    --bg-2:#0b1211;
+    --surface:rgba(255,255,255,.04);
+    --surface-2:rgba(255,255,255,.07);
+    --border:rgba(255,255,255,.09);
+    --border-strong:rgba(255,255,255,.16);
+    --text:#eef3f1;
+    --text-dim:#a3b3ad;
+    --text-mute:#6f817b;
+    --green:#1fae7d;
+    --green-bright:#37e6a6;
+    --green-soft:rgba(31,174,125,.14);
+    --blue:#3b9add;
+    --amber:#e8a13a;
+    --red:#e2625c;
+    --radius:18px;
+    --shadow:0 24px 70px -24px rgba(0,0,0,.7);
+  }
+  html{scroll-behavior:smooth;scroll-padding-top:84px;-webkit-text-size-adjust:100%}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    line-height:1.6;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(55% 45% at 78% -5%, rgba(55,230,166,.10), transparent 60%),
+      radial-gradient(45% 40% at 5% 12%, rgba(31,174,125,.08), transparent 60%);
+    background-attachment:fixed;
+  }
+  ::selection{background:var(--green);color:#04130d}
+  h1,h2,h3{font-family:'Sora',sans-serif;letter-spacing:-.02em;line-height:1.12}
+  a{color:inherit;text-decoration:none}
+  img,svg{display:block}
+
+  /* loading */
+  .boot{min-height:100vh;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;color:var(--text-mute)}
+  .boot .bmark{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--green-bright),var(--green));display:flex;align-items:center;justify-content:center;color:#04130d;font-size:24px;animation:bp 1.4s ease-in-out infinite}
+  @keyframes bp{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.08);opacity:1}}
+
+  /* progress */
+  .progress{position:fixed;top:0;left:0;right:0;height:3px;transform-origin:0%;background:linear-gradient(90deg,var(--green),var(--green-bright));z-index:100}
+
+  /* nav */
+  .nav{position:sticky;top:0;z-index:90;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);background:rgba(7,11,10,.62);border-bottom:1px solid var(--border)}
+  .nav-in{max-width:1140px;margin:0 auto;padding:13px clamp(18px,5vw,40px);display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:'Sora';font-weight:700;font-size:18px;letter-spacing:-.02em}
+  .brand-mark{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--green-bright),var(--green));display:flex;align-items:center;justify-content:center;color:#04130d;font-size:18px;box-shadow:0 6px 18px -6px rgba(31,174,125,.6)}
+  .nav-links{display:flex;gap:28px;align-items:center}
+  .nav-links a{font-size:14px;color:var(--text-dim);transition:color .18s}
+  .nav-links a:hover{color:var(--text)}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:'Inter';font-weight:600;font-size:15px;padding:13px 24px;border-radius:12px;cursor:pointer;border:1px solid transparent;transition:transform .18s ease,box-shadow .18s ease,background .18s ease;white-space:nowrap;background:none}
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:linear-gradient(135deg,var(--green-bright),var(--green));color:#04130d;box-shadow:0 12px 32px -10px rgba(31,174,125,.55)}
+  .btn-primary:hover{box-shadow:0 16px 40px -10px rgba(55,230,166,.65);transform:translateY(-2px)}
+  .btn-ghost{background:var(--surface);border-color:var(--border-strong);color:var(--text)}
+  .btn-ghost:hover{background:var(--surface-2);border-color:var(--green)}
+  .btn-sm{padding:9px 18px;font-size:14px}
+
+  .wrap{max-width:1140px;margin:0 auto;padding:0 clamp(18px,5vw,40px)}
+  section{padding:clamp(64px,9vw,128px) 0;position:relative}
+  .label{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--green-bright);margin-bottom:16px}
+  .h2{font-size:clamp(28px,4.4vw,44px);font-weight:700;margin-bottom:14px}
+  .lead{font-size:clamp(15px,2vw,18px);color:var(--text-dim);max-width:640px}
+
+  /* hero */
+  .hero{padding-top:clamp(48px,8vh,88px);overflow:hidden}
+  .hero::before{content:'';position:absolute;inset:0;pointer-events:none;
+    background-image:radial-gradient(rgba(255,255,255,.045) 1px,transparent 1px);background-size:34px 34px;
+    -webkit-mask:radial-gradient(62% 60% at 50% 16%,#000,transparent 76%);mask:radial-gradient(62% 60% at 50% 16%,#000,transparent 76%)}
+  .pill{display:inline-flex;align-items:center;gap:8px;background:var(--green-soft);border:1px solid rgba(55,230,166,.25);color:var(--green-bright);font-size:13px;font-weight:600;padding:7px 15px;border-radius:30px;margin-bottom:24px}
+  .hero h1{font-size:clamp(34px,6.4vw,68px);font-weight:800;margin-bottom:22px;background:linear-gradient(180deg,#fff 30%,#b9ccc4);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero h1 .accent{background:linear-gradient(135deg,var(--green-bright),var(--green));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero-sub{font-size:clamp(16px,2.2vw,20px);color:var(--text-dim);max-width:600px;margin-bottom:34px}
+  .hero-cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .hero-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:46px;max-width:680px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+  .stat-val{font-family:'Sora';font-size:clamp(24px,3.6vw,34px);font-weight:800;color:var(--green-bright);line-height:1}
+  .stat-label{font-size:13px;color:var(--text-dim);margin-top:8px;line-height:1.4}
+
+  .trust{display:flex;align-items:center;gap:10px 26px;flex-wrap:wrap;margin-top:40px;color:var(--text-mute);font-size:14px}
+  .trust i{color:var(--green);font-size:18px;vertical-align:-3px;margin-right:6px}
+
+  /* hero mock */
+  .hero-mock{margin-top:56px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border:1px solid var(--border);border-radius:20px;padding:16px;box-shadow:var(--shadow);position:relative}
+  .mock-bar{display:flex;align-items:center;gap:6px;padding:4px 6px 14px}
+  .mock-dot{width:11px;height:11px;border-radius:50%}
+  .mock-url{font-size:12px;color:var(--text-mute);margin-left:12px;font-family:'Inter'}
+  .mock-body{display:flex;gap:14px}
+  .mock-side{width:170px;flex-shrink:0;display:flex;flex-direction:column;gap:4px}
+  .mock-side .ttl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mute);margin-bottom:6px;padding-left:10px}
+  .mnav{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);padding:8px 11px;border-radius:9px}
+  .mnav i{font-size:15px}
+  .mnav.on{background:var(--green-soft);color:var(--green-bright)}
+  .mock-main{flex:1;min-width:0}
+  .mmetrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+  .mmetric{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:11px;padding:12px 13px}
+  .mmetric .l{font-size:11px;color:var(--text-mute)}
+  .mmetric .v{font-family:'Sora';font-size:clamp(15px,2vw,20px);font-weight:700;margin-top:4px}
+  .mrow{display:flex;align-items:center;gap:10px;font-size:13px;padding:11px 4px;border-bottom:1px solid var(--border);color:var(--text-dim)}
+  .mrow:last-child{border-bottom:none}
+  .badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:30px;flex-shrink:0;display:inline-flex;align-items:center;gap:4px}
+  .b-green{background:var(--green-soft);color:var(--green-bright)}
+  .b-amber{background:rgba(232,161,58,.16);color:var(--amber)}
+  .b-blue{background:rgba(59,154,221,.16);color:var(--blue)}
+  .b-red{background:rgba(226,98,92,.13);color:var(--red)}
+
+  /* generic cards grid */
+  .grid{display:grid;gap:16px;margin-top:44px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .gauto{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px}
+  .feature-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;transition:border-color .2s,background .2s,box-shadow .2s;will-change:transform}
+  .feature-card:hover{border-color:rgba(55,230,166,.4);background:var(--surface-2);box-shadow:0 20px 50px -24px rgba(31,174,125,.4)}
+  .feature-icon{width:50px;height:50px;border-radius:13px;background:var(--green-soft);border:1px solid rgba(55,230,166,.22);display:flex;align-items:center;justify-content:center;color:var(--green-bright);font-size:24px;margin-bottom:18px}
+  .feature-card h3{font-size:19px;font-weight:700;margin-bottom:9px}
+  .feature-card p{font-size:14px;color:var(--text-dim);line-height:1.6}
+
+  /* problem */
+  .prob{display:flex;gap:16px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px 22px}
+  .prob-ic{width:44px;height:44px;border-radius:11px;background:rgba(226,98,92,.13);border:1px solid rgba(226,98,92,.22);display:flex;align-items:center;justify-content:center;color:var(--red);font-size:21px;flex-shrink:0}
+  .prob h3{font-size:16px;font-weight:600;margin-bottom:5px}
+  .prob p{font-size:14px;color:var(--text-dim)}
+
+  /* roles */
+  .role{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;border-top:3px solid var(--rc,#1fae7d)}
+  .role-name{display:flex;align-items:center;gap:9px;font-family:'Sora';font-weight:700;font-size:17px;margin-bottom:14px}
+  .role-name i{font-size:19px;color:var(--rc)}
+  .role ul{list-style:none;display:flex;flex-direction:column;gap:7px}
+  .role li{font-size:14px;color:var(--text-dim);display:flex;gap:9px;align-items:flex-start}
+  .role li i{color:var(--green);font-size:15px;margin-top:3px;flex-shrink:0}
+  .note{display:flex;gap:13px;align-items:flex-start;background:var(--green-soft);border:1px solid rgba(55,230,166,.2);border-radius:13px;padding:18px 20px;margin-top:22px;font-size:14.5px;color:var(--text-dim)}
+  .note i{color:var(--green-bright);font-size:20px;flex-shrink:0;margin-top:1px}
+  .note strong{color:var(--text)}
+
+  /* results bars */
+  .bars{margin-top:40px;display:flex;flex-direction:column;gap:20px;max-width:760px}
+  .bar-row{display:flex;align-items:center;gap:18px}
+  .bar-label{font-size:14.5px;color:var(--text-dim);width:240px;flex-shrink:0}
+  .bar-track{flex:1;height:9px;background:rgba(255,255,255,.06);border-radius:20px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,var(--green),var(--green-bright))}
+  .bar-val{font-family:'Sora';font-weight:700;font-size:16px;width:54px;text-align:right;color:var(--green-bright)}
+  .quote{margin-top:34px;border-left:3px solid var(--green);background:var(--surface);border-radius:0 14px 14px 0;padding:22px 24px}
+  .quote p{font-size:16px;font-style:italic;color:var(--text);line-height:1.65}
+  .quote .who{font-size:13px;color:var(--text-mute);margin-top:12px;font-style:normal}
+
+  /* pricing */
+  .price-wrap{max-width:920px;margin:48px auto 0}
+  .price-card{position:relative;border-radius:24px;padding:2px;background:linear-gradient(135deg,rgba(55,230,166,.7),rgba(59,154,221,.35),rgba(255,255,255,.06));box-shadow:var(--shadow)}
+  .price-inner{background:linear-gradient(180deg,#0c1413,#0a100f);border-radius:22px;padding:clamp(28px,4vw,44px)}
+  .price-hero{text-align:center;padding-bottom:28px;border-bottom:1px solid var(--border);margin-bottom:28px}
+  .price-amount{font-family:'Sora';font-size:clamp(44px,8vw,68px);font-weight:800;line-height:1;background:linear-gradient(135deg,#fff,var(--green-bright));-webkit-background-clip:text;background-clip:text;color:transparent;display:inline-block}
+  .price-per{font-size:18px;color:var(--text-dim);font-family:'Inter';font-weight:400;margin-left:6px}
+  .price-note{font-size:14px;color:var(--text-mute);margin-top:10px}
+  .price-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px 36px}
+  .price-cols h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);margin-bottom:14px;font-family:'Inter';font-weight:600}
+  .price-cols ul{list-style:none;display:flex;flex-direction:column;gap:11px}
+  .price-cols li{display:flex;gap:11px;font-size:14.5px;color:var(--text-dim);align-items:flex-start}
+  .price-cols li i{color:var(--green-bright);font-size:18px;flex-shrink:0;margin-top:2px}
+  .price-foot{margin-top:30px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between}
+  .value-note{display:flex;gap:12px;align-items:center;background:var(--green-soft);border:1px solid rgba(55,230,166,.2);border-radius:13px;padding:16px 20px;margin-top:24px;font-size:14.5px;color:var(--text-dim);max-width:920px;margin-left:auto;margin-right:auto}
+  .value-note i{color:var(--green-bright);font-size:22px;flex-shrink:0}
+  .value-note strong{color:var(--text)}
+
+  /* contact */
+  .contact-card{text-align:center;max-width:760px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:clamp(36px,6vw,64px) clamp(24px,5vw,52px);box-shadow:var(--shadow)}
+  .contact-card h2{font-size:clamp(26px,4.5vw,42px);font-weight:800;margin-bottom:16px}
+  .contact-card .lead{margin:0 auto 32px}
+  .contact-cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:28px}
+  .dev{display:inline-flex;align-items:center;gap:14px;background:var(--bg-2);border:1px solid var(--border);border-radius:16px;padding:14px 22px}
+  .dev-av{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--green-bright),var(--green));display:flex;align-items:center;justify-content:center;color:#04130d;font-weight:800;font-family:'Sora'}
+  .dev-info{text-align:left}
+  .dev-name{font-weight:700;font-size:15px}
+  .dev-sub{font-size:13px;color:var(--text-mute)}
+
+  footer{border-top:1px solid var(--border);padding:34px 0;color:var(--text-mute);font-size:14px}
+  .foot-in{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+
+  /* ── Intro Modal ── */
+  .modal-overlay{position:fixed;inset:0;background:rgba(2,8,6,.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal-box{background:linear-gradient(160deg,#0e1715 0%,#091110 100%);border:1px solid rgba(55,230,166,.3);border-radius:28px;padding:clamp(28px,5vw,46px);max-width:440px;width:100%;text-align:center;box-shadow:0 60px 140px -30px rgba(0,0,0,.95),0 0 0 1px rgba(55,230,166,.08),inset 0 1px 0 rgba(255,255,255,.06)}
+  .modal-av{width:76px;height:76px;border-radius:20px;background:linear-gradient(135deg,var(--green-bright),var(--green));display:flex;align-items:center;justify-content:center;margin:0 auto 22px;font-size:36px;box-shadow:0 14px 36px -8px rgba(31,174,125,.6)}
+  .modal-tag{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid rgba(55,230,166,.2);color:var(--green-bright);font-size:11px;font-weight:700;padding:5px 13px;border-radius:30px;margin-bottom:20px;letter-spacing:.06em;text-transform:uppercase}
+  .modal-box h3{font-family:'Sora';font-size:23px;font-weight:800;margin-bottom:10px;background:linear-gradient(180deg,#fff 20%,#b9ccc4);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .modal-box p{color:var(--text-dim);font-size:15px;line-height:1.65;margin-bottom:6px}
+  .modal-box strong{color:var(--green-bright)}
+  .modal-phone{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--surface);border:1px solid var(--border-strong);border-radius:14px;padding:15px 20px;margin:22px 0;font-family:'Sora';font-weight:700;font-size:19px;color:var(--text);transition:border-color .2s,box-shadow .2s;text-decoration:none}
+  .modal-phone:hover{border-color:var(--green);box-shadow:0 0 0 3px rgba(31,174,125,.12)}
+  .modal-phone i{color:var(--green-bright);font-size:20px}
+  .modal-cta{width:100%;justify-content:center;padding:15px 24px;font-size:16px}
+  .modal-divider{display:flex;align-items:center;gap:12px;color:var(--text-mute);font-size:13px;margin:18px 0}
+  .modal-divider::before,.modal-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+  @media(max-width:860px){
+    .g3,.gauto{grid-template-columns:repeat(2,1fr)}
+    .nav-links{display:none}
+    .hero-mock .mock-side{display:none}
+    .bar-label{width:150px;font-size:13.5px}
+  }
+  @media(max-width:560px){
+    .g3,.g2,.gauto,.price-cols{grid-template-columns:1fr}
+    .hero-stats{grid-template-columns:1fr 1fr}
+    .mmetrics{grid-template-columns:1fr 1fr}
+    .price-foot{flex-direction:column;align-items:stretch}
+    .price-foot .btn{width:100%;justify-content:center}
+    .bar-row{flex-wrap:wrap;gap:8px}
+    .bar-label{width:100%}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+    html{scroll-behavior:auto}
+  }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="boot">
+    <div class="bmark"><i class="ti ti-tools-kitchen-2"></i></div>
+    <div>Загрузка RestOS…</div>
+  </div>
+</div>
+
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { motion, AnimatePresence, useScroll, useSpring, useInView, animate } from 'framer-motion';
+import htm from 'htm';
+
+const html = htm.bind(React.createElement);
+const F = React.Fragment;
+const EASE = [0.22, 1, 0.36, 1];
+
+/* ---------- helpers ---------- */
+function FadeIn({ children, delay = 0, y = 26, className = '' }) {
+  return html`<${motion.div}
+    className=${className}
+    initial=${{ opacity: 0, y }}
+    whileInView=${{ opacity: 1, y: 0 }}
+    viewport=${{ once: true, amount: 0.25 }}
+    transition=${{ duration: 0.6, delay, ease: EASE }}>
+    ${children}
+  <//>`;
+}
+
+function Counter({ to, suffix = '', prefix = '', duration = 1.5 }) {
+  const ref = React.useRef(null);
+  const inView = useInView(ref, { once: true, margin: '0px 0px -60px 0px' });
+  const [n, setN] = React.useState(0);
+  React.useEffect(() => {
+    if (!inView) return;
+    const controls = animate(0, to, { duration, ease: EASE, onUpdate: v => setN(v) });
+    return () => controls.stop();
+  }, [inView, to]);
+  return html`<span ref=${ref}>${prefix}${Math.round(n).toLocaleString('ru-RU')}${suffix}</span>`;
+}
+
+/* ---------- data ---------- */
+const FEATURES = [
+  { ic: 'ti-chart-line', t: 'Финансовая аналитика', d: 'Выручка, средний чек, поток гостей в реальном времени. Графики за любой период, топ и аутсайдеры блюд.' },
+  { ic: 'ti-calendar-check', t: 'Умные бронирования', d: 'Защита от двойного бронирования ±90 минут. Автоматические напоминания гостям в WhatsApp и Email.' },
+  { ic: 'ti-tools-kitchen-2', t: 'Кухонный экран', d: 'Повар видит заказы вживую: SLA-таймер, статусы блюд, продвижение по одной кнопке. Ничего не теряется.' },
+  { ic: 'ti-users', t: 'KPI персонала', d: 'Сколько заказов взял официант и какую выручку принёс — объективно, без споров и догадок.' },
+  { ic: 'ti-layout-grid', t: 'Карта зала', d: 'Свободен / занят / зарезервирован — визуально. Автообновление каждые 30 секунд.' },
+  { ic: 'ti-cake', t: 'Дни рождения и рассылки', d: 'База гостей с датами рождения → авто-поздравление накануне. Возврат «спящих» клиентов. Персональные рассылки.' },
+  { ic: 'ti-world', t: 'QR-меню и онлайн-сайт', d: 'Готовый сайт ресторана с QR-меню для каждого стола. Гость сканирует, видит меню и бронирует стол — всё онлайн.' },
+];
+
+const PROBLEMS = [
+  { ic: 'ti-calendar-x', t: 'Двойные бронирования', d: 'Гость пришёл — а стол занят. Конфликт, испорченный вечер и потерянный постоянный клиент.' },
+  { ic: 'ti-chart-bar-off', t: 'Аналитика «на глазок»', d: 'Не видно, какое блюдо убыточно, когда пик нагрузки и где именно утекает выручка.' },
+  { ic: 'ti-users-minus', t: 'Персонал без контроля', d: 'Нет данных по KPI официантов. Кто работает, а кто тормозит кухню — только по ощущениям.' },
+  { ic: 'ti-plug-x', t: 'iiko есть — толку нет', d: 'POS-система стоит, но аналитика собирается вручную, отдельно и с задержкой на сутки.' },
+];
+
+const ROLES = [
+  { c: 'var(--green)', ic: 'ti-crown', n: 'Основатель', items: ['Вся аналитика сети', 'Все рестораны', 'Настройки и интеграции', 'Финансовый экспорт'] },
+  { c: 'var(--blue)', ic: 'ti-briefcase', n: 'Управляющий', items: ['Аналитика ресторана', 'Управление персоналом', 'Брони и заказы', 'Меню и столы'] },
+  { c: 'var(--amber)', ic: 'ti-calendar', n: 'Хостес', items: ['Только бронирования', 'Статус столов в зале', 'Ничего лишнего'] },
+  { c: 'var(--red)', ic: 'ti-tools-kitchen-2', n: 'Шеф / Повар', items: ['Только кухонный экран', 'Статусы заказов', 'Продвижение блюд'] },
+];
+
+const RESULTS = [
+  { l: 'Сокращение ошибок брони', v: 95 },
+  { l: 'Рост среднего чека', v: 23 },
+  { l: 'Экономия времени управляющего', v: 60 },
+  { l: 'Скорость найма сотрудника', v: 90 },
+  { l: 'Удовлетворённость гостей', v: 87 },
+];
+
+const INCLUDED_L = [
+  'Все модули: аналитика, брони, кухня, персонал',
+  'QR-меню и онлайн-сайт для гостей',
+  'Интеграция с iiko',
+  'Авто-поздравления в день рождения',
+  'Возврат «спящих» клиентов (авто-рассылки)',
+  'Настройка под ваш бренд за 7 дней',
+];
+const INCLUDED_R = [
+  'WhatsApp / Email уведомления гостям',
+  'Хостинг, домен и автобэкапы',
+  'Все обновления и новые модули',
+  'Техподдержка без ограничений',
+  'Безлимит сотрудников, броней и гостей',
+  'KPI персонала и финансовый экспорт',
+];
+
+const WA = 'https://wa.me/77070502838';
+const TEL = 'tel:+77070502838';
+const MAIL = 'mailto:askiloff10@gmail.com?subject=Хочу подключить RestOS';
+
+/* ---------- Intro Modal ---------- */
+function IntroModal({ onClose }) {
+  return html`
+    <${motion.div}
+      className="modal-overlay"
+      initial=${{ opacity: 0 }}
+      animate=${{ opacity: 1 }}
+      exit=${{ opacity: 0 }}
+      transition=${{ duration: 0.22 }}
+      onClick=${onClose}>
+      <${motion.div}
+        className="modal-box"
+        initial=${{ opacity: 0, scale: 0.86, y: 36 }}
+        animate=${{ opacity: 1, scale: 1, y: 0 }}
+        exit=${{ opacity: 0, scale: 0.92, y: 12 }}
+        transition=${{ duration: 0.48, ease: EASE }}
+        onClick=${e => e.stopPropagation()}>
+        <div className="modal-tag"><i className="ti ti-star-filled"></i> Software Engineer</div>
+        <div className="modal-av">👋</div>
+        <h3>Привет! Меня зовут Нурислам</h3>
+        <p>Мне 14 лет. Я создаю <strong>полноценные цифровые продукты</strong> — CRM-системы, онлайн-меню, сайты и SaaS-платформы.</p>
+        <p style=${{ marginTop: '4px' }}>И да — могу сделать <strong>ещё круче этого</strong> 😉</p>
+        <a className="modal-phone" href=${TEL}>
+          <i className="ti ti-phone"></i> +7 707 050 2838
+        </a>
+        <button className="btn btn-primary modal-cta" onClick=${onClose}>
+          Смотреть продукт →
+        </button>
+        <div className="modal-divider">или</div>
+        <a href=${WA} target="_blank" rel="noopener" className="btn btn-ghost" style=${{ width: '100%', justifyContent: 'center' }}>
+          <i className="ti ti-brand-whatsapp"></i> Написать в WhatsApp
+        </a>
+      <//>
+    <//>
+  `;
+}
+
+/* ---------- sections ---------- */
+function Nav() {
+  return html`<nav className="nav"><div className="nav-in">
+    <a className="brand" href="#top"><span className="brand-mark"><i className="ti ti-tools-kitchen-2"></i></span>RestOS</a>
+    <div className="nav-links">
+      <a href="#features">Возможности</a>
+      <a href="#results">Результаты</a>
+      <a href="#pricing">Цена</a>
+      <a href="#contact">Контакты</a>
+    </div>
+    <a className="btn btn-primary btn-sm" href="#contact">Связаться</a>
+  </div></nav>`;
+}
+
+function Hero() {
+  return html`<header className="hero" id="top"><div className="wrap">
+    <${motion.div} initial=${{ opacity: 0, y: 20 }} animate=${{ opacity: 1, y: 0 }} transition=${{ duration: 0.6, ease: EASE }}>
+      <div className="pill"><i className="ti ti-sparkles"></i> Операционная система ресторана</div>
+    <//>
+    <${motion.h1} initial=${{ opacity: 0, y: 28 }} animate=${{ opacity: 1, y: 0 }} transition=${{ duration: 0.7, delay: 0.08, ease: EASE }}>
+      Весь ваш ресторан <span className="accent">под контролем</span> — в одном дашборде
+    <//>
+    <${motion.p} className="hero-sub" initial=${{ opacity: 0, y: 24 }} animate=${{ opacity: 1, y: 0 }} transition=${{ duration: 0.7, delay: 0.16, ease: EASE }}>
+      Аналитика, бронирования, кухня, персонал, меню, маркетинг и интеграция с iiko. QR-меню и онлайн-сайт для ваших гостей. Никаких Excel-таблиц — только рост выручки.
+    <//>
+    <${motion.div} className="hero-cta" initial=${{ opacity: 0, y: 24 }} animate=${{ opacity: 1, y: 0 }} transition=${{ duration: 0.7, delay: 0.24, ease: EASE }}>
+      <a className="btn btn-primary" href="#contact"><i className="ti ti-rocket"></i> Подключить ресторан</a>
+      <a className="btn btn-ghost" href="#features"><i className="ti ti-eye"></i> Смотреть возможности</a>
+    <//>
+
+    <${motion.div} className="hero-stats" initial=${{ opacity: 0, y: 24 }} animate=${{ opacity: 1, y: 0 }} transition=${{ duration: 0.7, delay: 0.34, ease: EASE }}>
+      <div className="stat"><div className="stat-val"><${Counter} to=${23} prefix="+" suffix="%" /></div><div className="stat-label">рост выручки за первые 3 месяца</div></div>
+      <div className="stat"><div className="stat-val"><${Counter} to=${7} suffix=" дней" /></div><div className="stat-label">от старта до полного запуска</div></div>
+      <div className="stat"><div className="stat-val">24/7</div><div className="stat-label">автоматизация и поддержка</div></div>
+    <//>
+
+    <div className="trust">
+      <span><i className="ti ti-plug-connected"></i>Интеграция с iiko</span>
+      <span><i className="ti ti-brand-whatsapp"></i>WhatsApp-уведомления</span>
+      <span><i className="ti ti-building-store"></i>Несколько ресторанов</span>
+      <span><i className="ti ti-qrcode"></i>QR-меню для гостей</span>
+      <span><i className="ti ti-cake"></i>Авто-поздравления в ДР</span>
+    </div>
+
+    <${motion.div} className="hero-mock"
+      initial=${{ opacity: 0, y: 44, scale: 0.98 }}
+      animate=${{ opacity: 1, y: 0, scale: 1 }}
+      transition=${{ duration: 0.9, delay: 0.4, ease: EASE }}>
+      <${motion.div} animate=${{ y: [0, -8, 0] }} transition=${{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}>
+        <div className="mock-bar">
+          <span className="mock-dot" style=${{ background: '#e2625c' }}></span>
+          <span className="mock-dot" style=${{ background: '#e8a13a' }}></span>
+          <span className="mock-dot" style=${{ background: '#1fae7d' }}></span>
+          <span className="mock-url">dashboard.restos.kz</span>
+        </div>
+        <div className="mock-body">
+          <div className="mock-side">
+            <div className="ttl">Навигация</div>
+            <div className="mnav on"><i className="ti ti-chart-bar"></i> Аналитика</div>
+            <div className="mnav"><i className="ti ti-calendar"></i> Бронирования</div>
+            <div className="mnav"><i className="ti ti-tools-kitchen-2"></i> Кухня</div>
+            <div className="mnav"><i className="ti ti-layout-grid"></i> Зал</div>
+            <div className="mnav"><i className="ti ti-users"></i> Персонал</div>
+            <div className="mnav"><i className="ti ti-cake"></i> Маркетинг</div>
+            <div className="mnav"><i className="ti ti-world"></i> QR-меню</div>
+          </div>
+          <div className="mock-main">
+            <div className="mmetrics">
+              <div className="mmetric"><div className="l">Выручка сегодня</div><div className="v" style=${{ color: 'var(--green-bright)' }}>842 000 ₸</div></div>
+              <div className="mmetric"><div className="l">Средний чек</div><div className="v">9 350 ₸</div></div>
+              <div className="mmetric"><div className="l">Гостей</div><div className="v">90</div></div>
+            </div>
+            <div className="mrow">
+              <span className="badge b-green"><i className="ti ti-calendar"></i> Бронь</span>
+              <span>Алия, 4 чел., 19:00 — стол 5</span>
+              <span className="badge b-amber" style=${{ marginLeft: 'auto' }}><i className="ti ti-clock"></i> ожидает</span>
+            </div>
+            <div className="mrow">
+              <span className="badge b-green"><i className="ti ti-calendar"></i> Бронь</span>
+              <span>Данияр, 2 чел., 19:30 — стол 3</span>
+              <span className="badge b-green" style=${{ marginLeft: 'auto' }}><i className="ti ti-check"></i> подтверждено</span>
+            </div>
+            <div className="mrow">
+              <span className="badge b-blue"><i className="ti ti-tools-kitchen-2"></i> Кухня</span>
+              <span>Стол 7 — Бешбармак, Стейк, Чай</span>
+              <span className="badge b-amber" style=${{ marginLeft: 'auto' }}><i className="ti ti-flame"></i> готовится</span>
+            </div>
+            <div className="mrow">
+              <span className="badge b-blue"><i className="ti ti-tools-kitchen-2"></i> Кухня</span>
+              <span>Стол 2 — Паста, Суп, Лимонад</span>
+              <span className="badge b-green" style=${{ marginLeft: 'auto' }}><i className="ti ti-check"></i> готово</span>
+            </div>
+          </div>
+        </div>
+      <//>
+    <//>
+  </div></header>`;
+}
+
+function Problem() {
+  return html`<section id="problem"><div className="wrap">
+    <${FadeIn}><div className="label"><i className="ti ti-alert-triangle"></i> Проблема</div><//>
+    <${FadeIn} delay=${0.05}><h2 className="h2">Где рестораны теряют деньги каждый день</h2><//>
+    <${FadeIn} delay=${0.1}><p className="lead">Узнаёте? Большинство этих потерь невидимы — пока их не начать считать.</p><//>
+    <div className="grid g2">
+      ${PROBLEMS.map((p, i) => html`
+        <${FadeIn} key=${p.t} delay=${i * 0.07}>
+          <div className="prob">
+            <div className="prob-ic"><i className=${'ti ' + p.ic}></i></div>
+            <div><h3>${p.t}</h3><p>${p.d}</p></div>
+          </div>
+        <//>`)}
+    </div>
+  </div></section>`;
+}
+
+function Features() {
+  return html`<section id="features"><div className="wrap">
+    <${FadeIn}><div className="label"><i className="ti ti-stack-2"></i> Решение</div><//>
+    <${FadeIn} delay=${0.05}><h2 className="h2">Полная операционная система ресторана</h2><//>
+    <${FadeIn} delay=${0.1}><p className="lead">Семь инструментов, которые обычно покупают по отдельности — здесь работают как единое целое.</p><//>
+    <div className="grid gauto">
+      ${FEATURES.map((f, i) => html`
+        <${motion.div} key=${f.t} className="feature-card"
+          initial=${{ opacity: 0, y: 26 }}
+          whileInView=${{ opacity: 1, y: 0 }}
+          viewport=${{ once: true, amount: 0.2 }}
+          transition=${{ duration: 0.55, delay: (i % 3) * 0.08, ease: EASE }}
+          whileHover=${{ y: -6 }}>
+          <div className="feature-icon"><i className=${'ti ' + f.ic}></i></div>
+          <h3>${f.t}</h3>
+          <p>${f.d}</p>
+        <//>`)}
+    </div>
+  </div></section>`;
+}
+
+function Roles() {
+  return html`<section id="roles"><div className="wrap">
+    <${FadeIn}><div className="label"><i className="ti ti-lock-access"></i> Роли и доступ</div><//>
+    <${FadeIn} delay=${0.05}><h2 className="h2">Каждый сотрудник видит только своё</h2><//>
+    <${FadeIn} delay=${0.1}><p className="lead">Система ролей без компромиссов — никаких «дайте всем все права».</p><//>
+    <div className="grid g2" style=${{ marginTop: '40px' }}>
+      ${ROLES.map((r, i) => html`
+        <${FadeIn} key=${r.n} delay=${i * 0.07}>
+          <div className="role" style=${{ '--rc': r.c }}>
+            <div className="role-name"><i className=${'ti ' + r.ic}></i> ${r.n}</div>
+            <ul>${r.items.map(it => html`<li key=${it}><i className="ti ti-check"></i>${it}</li>`)}</ul>
+          </div>
+        <//>`)}
+    </div>
+    <${FadeIn} delay=${0.1}>
+      <div className="note"><i className="ti ti-shield-check"></i><div>Уволенный сотрудник теряет доступ <strong>мгновенно</strong> — токен перепроверяется при каждом запросе. Данные одного ресторана физически не могут попасть в другой.</div></div>
+    <//>
+  </div></section>`;
+}
+
+function Bar({ l, v }) {
+  return html`<div className="bar-row">
+    <span className="bar-label">${l}</span>
+    <div className="bar-track">
+      <${motion.div} className="bar-fill"
+        initial=${{ scaleX: 0 }}
+        whileInView=${{ scaleX: v / 100 }}
+        viewport=${{ once: true, amount: 0.5 }}
+        transition=${{ duration: 1.1, ease: EASE }}
+        style=${{ transformOrigin: 'left' }} />
+    </div>
+    <span className="bar-val"><${Counter} to=${v} suffix="%" /></span>
+  </div>`;
+}
+
+function Results() {
+  return html`<section id="results"><div className="wrap">
+    <${FadeIn}><div className="label"><i className="ti ti-trending-up"></i> Результаты</div><//>
+    <${FadeIn} delay=${0.05}><h2 className="h2">Что получают рестораны после подключения</h2><//>
+    <div className="bars">
+      ${RESULTS.map(r => html`<${Bar} key=${r.l} l=${r.l} v=${r.v} />`)}
+    </div>
+    <${FadeIn} delay=${0.1}>
+      <div className="quote">
+        <p>«Раньше было 2–3 конфликта с гостями в неделю из-за броней. После подключения — ноль. А ещё наконец увидел, что бешбармак приносит больше прибыли, чем стейк».</p>
+        <div className="who">Дмитрий — основатель, сеть из 3 ресторанов</div>
+      </div>
+    <//>
+  </div></section>`;
+}
+
+function MultiRestaurant() {
+  const cards = [
+    { ic: 'ti-building-store', t: 'Один аккаунт — вся сеть', d: 'Переключайтесь между ресторанами одной кнопкой. Сравнивайте показатели. Разные команды, разные данные — один дашборд.' },
+    { ic: 'ti-lock', t: 'Полная изоляция данных', d: 'Данные ресторана А никогда не попадут к ресторану Б. Изоляция заложена на уровне базы данных, а не интерфейса.' },
+    { ic: 'ti-key', t: 'API для вашего сайта', d: 'Уникальный ключ для каждого ресторана. Принимайте брони и заказы прямо с вашего сайта — без посредников.' },
+  ];
+  return html`<section id="multi"><div className="wrap">
+    <${FadeIn}><div className="label"><i className="ti ti-building-community"></i> Мульти-ресторан</div><//>
+    <${FadeIn} delay=${0.05}><h2 className="h2">У вас сеть? Это ваша суперсила</h2><//>
+    <div className="grid g3">
+      ${cards.map((c, i) => html`
+        <${FadeIn} key=${c.t} delay=${i * 0.08} className="feature-card">
+          <div className="feature-icon"><i className=${'ti ' + c.ic}></i></div>
+          <h3>${c.t}</h3><p>${c.d}</p>
+        <//>`)}
+    </div>
+  </div></section>`;
+}
+
+function Pricing() {
+  return html`<section id="pricing"><div className="wrap">
+    <${FadeIn}>
+      <div style=${{ textAlign: 'center' }}>
+        <div className="label" style=${{ justifyContent: 'center' }}><i className="ti ti-diamond"></i> Стоимость</div>
+        <h2 className="h2">Одна фиксированная подписка. Всё включено</h2>
+        <p className="lead" style=${{ margin: '0 auto' }}>Никаких разовых платежей — только ежемесячная подписка с полным запуском за 7 дней.</p>
+      </div>
+    <//>
+
+    <${FadeIn} delay=${0.1}>
+      <div className="price-wrap"><div className="price-card"><div className="price-inner">
+        <div className="price-hero">
+          <div style=${{ fontSize: '14px', color: 'var(--text-dim)', marginBottom: '12px', letterSpacing: '.04em' }}>Ежемесячная подписка · всё включено</div>
+          <div>
+            <span className="price-amount"><${Counter} to=${150000} duration=${1.8} /></span><span className="price-per">₸ / мес</span>
+          </div>
+          <div className="price-note">≈ 5 000 ₸ в день — меньше стоимости одного неудачного банкета</div>
+        </div>
+        <div className="price-cols">
+          <div>
+            <h4>Запуск и модули</h4>
+            <ul>${INCLUDED_L.map(s => html`<li key=${s}><i className="ti ti-circle-check"></i>${s}</li>`)}</ul>
+          </div>
+          <div>
+            <h4>Сервис и автоматизация</h4>
+            <ul>${INCLUDED_R.map(s => html`<li key=${s}><i className="ti ti-circle-check"></i>${s}</li>`)}</ul>
+          </div>
+        </div>
+        <div className="price-foot">
+          <a className="btn btn-primary" href="#contact"><i className="ti ti-rocket"></i> Подключить ресторан</a>
+          <a className="btn btn-ghost" href=${WA} target="_blank" rel="noopener"><i className="ti ti-brand-whatsapp"></i> Задать вопрос в WhatsApp</a>
+        </div>
+      </div></div></div>
+    <//>
+
+    <${FadeIn} delay=${0.12}>
+      <div className="value-note"><i className="ti ti-bulb"></i><div>Собственная разработка такой системы — это <strong>от 5 000 000 ₸ и 6+ месяцев</strong> работы команды. Вы получаете готовое, проверенное решение <strong>за неделю</strong> и платите только пока пользуетесь.</div></div>
+    <//>
+  </div></section>`;
+}
+
+function Contact() {
+  return html`<section id="contact"><div className="wrap">
+    <${FadeIn}>
+      <div className="contact-card">
+        <div className="label" style=${{ justifyContent: 'center' }}><i className="ti ti-send"></i> Готовы начать?</div>
+        <h2>Выведите ресторан на новый уровень уже на этой неделе</h2>
+        <p className="lead">Напишите или позвоните — отвечу лично, покажу систему вживую и отвечу на все вопросы.</p>
+        <div className="contact-cta">
+          <a className="btn btn-primary" href=${WA} target="_blank" rel="noopener"><i className="ti ti-brand-whatsapp"></i> Написать в WhatsApp</a>
+          <a className="btn btn-ghost" href=${TEL}><i className="ti ti-phone"></i> Позвонить</a>
+          <a className="btn btn-ghost" href=${MAIL}><i className="ti ti-mail"></i> Email</a>
+        </div>
+        <div className="dev">
+          <div className="dev-av">Н</div>
+          <div className="dev-info">
+            <div className="dev-name">Нурислам · Software Engineer · 14 лет</div>
+            <div className="dev-sub">+7 707 050 2838 · CRM, сайты, онлайн-меню, SaaS под ключ</div>
+          </div>
+        </div>
+      </div>
+    <//>
+  </div></section>`;
+}
+
+function Footer() {
+  return html`<footer><div className="wrap"><div className="foot-in">
+    <div className="brand" style=${{ fontSize: '16px' }}><span className="brand-mark" style=${{ width: '28px', height: '28px', fontSize: '15px' }}><i className="ti ti-tools-kitchen-2"></i></span>RestOS</div>
+    <div>© 2026 · Сделано Нурисламом · +7 707 050 2838</div>
+  </div></div></footer>`;
+}
+
+function App() {
+  const [showModal, setShowModal] = React.useState(false);
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, { stiffness: 120, damping: 30, mass: 0.2 });
+
+  React.useEffect(() => {
+    const t = setTimeout(() => setShowModal(true), 900);
+    return () => clearTimeout(t);
+  }, []);
+
+  return html`<${F}>
+    <${AnimatePresence}>
+      ${showModal && html`<${IntroModal} key="intro-modal" onClose=${() => setShowModal(false)} />`}
+    <//>
+    <${motion.div} className="progress" style=${{ scaleX }} />
+    <${Nav} />
+    <${Hero} />
+    <${Problem} />
+    <${Features} />
+    <${Roles} />
+    <${Results} />
+    <${MultiRestaurant} />
+    <${Pricing} />
+    <${Contact} />
+    <${Footer} />
+  <//>`;
+}
+
+createRoot(document.getElementById('root')).render(html`<${App} />`);
+</script>
+</body>
+</html>
