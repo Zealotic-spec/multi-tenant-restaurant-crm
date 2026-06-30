@@ -177,22 +177,28 @@
   .quote .who{font-size:13px;color:var(--text-mute);margin-top:12px;font-style:normal}
 
   /* pricing */
-  .price-wrap{max-width:920px;margin:48px auto 0}
-  .price-card{position:relative;border-radius:24px;padding:2px;background:linear-gradient(135deg,rgba(55,230,166,.7),rgba(59,154,221,.35),rgba(255,255,255,.06));box-shadow:var(--shadow)}
-  .price-inner{background:linear-gradient(180deg,#0c1413,#0a100f);border-radius:22px;padding:clamp(28px,4vw,44px)}
-  .price-hero{text-align:center;padding-bottom:28px;border-bottom:1px solid var(--border);margin-bottom:28px}
-  .price-amount{font-family:'Sora';font-size:clamp(44px,8vw,68px);font-weight:800;line-height:1;background:linear-gradient(135deg,#fff,var(--green-bright));-webkit-background-clip:text;background-clip:text;color:transparent;display:inline-block}
-  .price-per{font-size:18px;color:var(--text-dim);font-family:'Inter';font-weight:400;margin-left:6px}
-  .price-note{font-size:14px;color:var(--text-mute);margin-top:10px}
-  .price-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px 36px}
-  .price-cols h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);margin-bottom:14px;font-family:'Inter';font-weight:600}
-  .price-cols ul{list-style:none;display:flex;flex-direction:column;gap:11px}
-  .price-cols li{display:flex;gap:11px;font-size:14.5px;color:var(--text-dim);align-items:flex-start}
-  .price-cols li i{color:var(--green-bright);font-size:18px;flex-shrink:0;margin-top:2px}
-  .price-foot{margin-top:30px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between}
-  .value-note{display:flex;gap:12px;align-items:center;background:var(--green-soft);border:1px solid rgba(55,230,166,.2);border-radius:13px;padding:16px 20px;margin-top:24px;font-size:14.5px;color:var(--text-dim);max-width:920px;margin-left:auto;margin-right:auto}
+  .tiers{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:44px auto 0;max-width:1100px}
+  .tier{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:22px 16px;text-align:center;position:relative;transition:border-color .2s,background .2s}
+  .tier.popular{background:linear-gradient(180deg,#0d1715,#091210);border-color:rgba(55,230,166,.5);box-shadow:0 0 0 1px rgba(55,230,166,.12),0 20px 50px -20px rgba(31,174,125,.35)}
+  .tier-pop-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--green-bright),var(--green));color:#04130d;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;white-space:nowrap;letter-spacing:.04em}
+  .tier-label{font-size:13px;color:var(--text-dim);margin-bottom:14px;min-height:36px;display:flex;align-items:center;justify-content:center;text-align:center}
+  .tier-price{font-family:'Sora';font-weight:800;font-size:clamp(20px,2.4vw,26px);line-height:1;color:var(--text);margin-bottom:6px}
+  .tier.popular .tier-price{background:linear-gradient(135deg,#fff,var(--green-bright));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .tier-per{font-size:11px;color:var(--text-mute);margin-bottom:16px}
+  .tier-cta{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text-dim);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:9px;padding:8px 14px;transition:border-color .2s,color .2s;text-decoration:none;width:100%;justify-content:center}
+  .tier.popular .tier-cta{background:var(--green-soft);border-color:rgba(55,230,166,.35);color:var(--green-bright)}
+  .tier-cta:hover{border-color:var(--green);color:var(--green-bright)}
+  .included-wrap{max-width:900px;margin:36px auto 0;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px 32px}
+  .included-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);margin-bottom:18px;font-weight:600}
+  .included-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px 36px}
+  .included-item{display:flex;gap:10px;font-size:14px;color:var(--text-dim);align-items:flex-start}
+  .included-item i{color:var(--green-bright);font-size:17px;flex-shrink:0;margin-top:2px}
+  .price-ctas{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:28px}
+  .value-note{display:flex;gap:12px;align-items:center;background:var(--green-soft);border:1px solid rgba(55,230,166,.2);border-radius:13px;padding:16px 20px;margin-top:24px;font-size:14.5px;color:var(--text-dim);max-width:1100px;margin-left:auto;margin-right:auto}
   .value-note i{color:var(--green-bright);font-size:22px;flex-shrink:0}
   .value-note strong{color:var(--text)}
+  @media(max-width:860px){.tiers{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:560px){.tiers{grid-template-columns:1fr 1fr}.included-grid{grid-template-columns:1fr}}
 
   /* contact */
   .contact-card{text-align:center;max-width:760px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:clamp(36px,6vw,64px) clamp(24px,5vw,52px);box-shadow:var(--shadow)}
@@ -319,21 +325,24 @@ const RESULTS = [
   { l: 'Удовлетворённость гостей', v: 87 },
 ];
 
-const INCLUDED_L = [
+const TIERS = [
+  { label: '1 ресторан',        price: 150000, per: '150 000 ₸ / рест.', popular: false },
+  { label: '2–3 ресторана',     price: 250000, per: '83 000 ₸ / рест.',  popular: true  },
+  { label: '4–5 ресторанов',    price: 350000, per: '70 000 ₸ / рест.',  popular: false },
+  { label: '6–10 ресторанов',   price: 500000, per: '50 000 ₸ / рест.',  popular: false },
+  { label: '11–20 ресторанов',  price: 700000, per: '35 000 ₸ / рест.',  popular: false },
+];
+const INCLUDED = [
   'Все модули: аналитика, брони, кухня, персонал',
   'QR-меню и онлайн-сайт для гостей',
   'Интеграция с iiko',
   'Авто-поздравления в день рождения',
   'Возврат «спящих» клиентов (авто-рассылки)',
-  'Настройка под ваш бренд за 7 дней',
-];
-const INCLUDED_R = [
   'WhatsApp / Email уведомления гостям',
   'Хостинг, домен и автобэкапы',
-  'Все обновления и новые модули',
   'Техподдержка без ограничений',
+  'Запуск и настройка за 7 дней',
   'Безлимит сотрудников, броней и гостей',
-  'KPI персонала и финансовый экспорт',
 ];
 
 const WA = 'https://wa.me/77070502838';
@@ -589,38 +598,52 @@ function Pricing() {
     <${FadeIn}>
       <div style=${{ textAlign: 'center' }}>
         <div className="label" style=${{ justifyContent: 'center' }}><i className="ti ti-diamond"></i> Стоимость</div>
-        <h2 className="h2">Одна фиксированная подписка. Всё включено</h2>
-        <p className="lead" style=${{ margin: '0 auto' }}>Никаких разовых платежей — только ежемесячная подписка с полным запуском за 7 дней.</p>
+        <h2 className="h2">Тарифы по размеру сети</h2>
+        <p className="lead" style=${{ margin: '0 auto' }}>Чем больше ресторанов — тем ниже цена за каждый. Всё включено, без скрытых платежей.</p>
       </div>
     <//>
 
-    <${FadeIn} delay=${0.1}>
-      <div className="price-wrap"><div className="price-card"><div className="price-inner">
-        <div className="price-hero">
-          <div style=${{ fontSize: '14px', color: 'var(--text-dim)', marginBottom: '12px', letterSpacing: '.04em' }}>Ежемесячная подписка · всё включено</div>
-          <div>
-            <span className="price-amount"><${Counter} to=${150000} duration=${1.8} /></span><span className="price-per">₸ / мес</span>
-          </div>
-          <div className="price-note">≈ 5 000 ₸ в день — меньше стоимости одного неудачного банкета</div>
-        </div>
-        <div className="price-cols">
-          <div>
-            <h4>Запуск и модули</h4>
-            <ul>${INCLUDED_L.map(s => html`<li key=${s}><i className="ti ti-circle-check"></i>${s}</li>`)}</ul>
-          </div>
-          <div>
-            <h4>Сервис и автоматизация</h4>
-            <ul>${INCLUDED_R.map(s => html`<li key=${s}><i className="ti ti-circle-check"></i>${s}</li>`)}</ul>
-          </div>
-        </div>
-        <div className="price-foot">
-          <a className="btn btn-primary" href="#contact"><i className="ti ti-rocket"></i> Подключить ресторан</a>
-          <a className="btn btn-ghost" href=${WA} target="_blank" rel="noopener"><i className="ti ti-brand-whatsapp"></i> Задать вопрос в WhatsApp</a>
-        </div>
-      </div></div></div>
+    <${FadeIn} delay=${0.08}>
+      <div className="tiers">
+        ${TIERS.map((t, i) => html`
+          <${motion.div}
+            key=${t.label}
+            className=${'tier' + (t.popular ? ' popular' : '')}
+            initial=${{ opacity: 0, y: 20 }}
+            whileInView=${{ opacity: 1, y: 0 }}
+            viewport=${{ once: true, amount: 0.3 }}
+            transition=${{ duration: 0.5, delay: i * 0.07, ease: EASE }}>
+            ${t.popular && html`<div className="tier-pop-badge">★ Популярный</div>`}
+            <div className="tier-label">${t.label}</div>
+            <div className="tier-price"><${Counter} to=${t.price} duration=${1.4} /> ₸</div>
+            <div className="tier-per">${t.per}</div>
+            <a href="#contact" className="tier-cta"><i className="ti ti-rocket"></i> Выбрать</a>
+          <//>
+        `)}
+      </div>
     <//>
 
     <${FadeIn} delay=${0.12}>
+      <div className="included-wrap">
+        <div className="included-title">Входит во все тарифы</div>
+        <div className="included-grid">
+          ${INCLUDED.map(s => html`
+            <div key=${s} className="included-item">
+              <i className="ti ti-circle-check"></i>${s}
+            </div>
+          `)}
+        </div>
+      </div>
+    <//>
+
+    <${FadeIn} delay=${0.14}>
+      <div className="price-ctas">
+        <a className="btn btn-primary" href="#contact"><i className="ti ti-rocket"></i> Подключить ресторан</a>
+        <a className="btn btn-ghost" href=${WA} target="_blank" rel="noopener"><i className="ti ti-brand-whatsapp"></i> Задать вопрос в WhatsApp</a>
+      </div>
+    <//>
+
+    <${FadeIn} delay=${0.16}>
       <div className="value-note"><i className="ti ti-bulb"></i><div>Собственная разработка такой системы — это <strong>от 5 000 000 ₸ и 6+ месяцев</strong> работы команды. Вы получаете готовое, проверенное решение <strong>за неделю</strong> и платите только пока пользуетесь.</div></div>
     <//>
   </div></section>`;
